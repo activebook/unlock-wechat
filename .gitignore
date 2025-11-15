@@ -6,6 +6,7 @@
 *.o
 *.obj
 *.res
+*.zip
 
 # Debug files
 *.pdb
@@ -23,3 +24,8 @@
 # OS files
 .DS_Store
 Thumbs.db
+
+# Release files
+*.zip
+*.7z
+env
