@@ -42,9 +42,35 @@ BOOL FindWeChatProcess() {
     return GetWeChatProcessId() != 0;
 }
 
-// Function to inject DLL into WeChat process
-BOOL InjectDllIntoWeChat() {
-    DWORD pid = GetWeChatProcessId();
+void GetAllWeChatPids(DWORD* pids, int* count) {
+    *count = 0;
+    HANDLE hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    if (hSnapshot == INVALID_HANDLE_VALUE) {
+        return;
+    }
+
+    PROCESSENTRY32 pe32;
+    pe32.dwSize = sizeof(PROCESSENTRY32);
+
+    if (!Process32First(hSnapshot, &pe32)) {
+        CloseHandle(hSnapshot);
+        return;
+    }
+
+    do {
+        if (lstrcmpiA(pe32.szExeFile, "Weixin.exe") == 0) {
+            if (*count < 100) {  // Max 100 processes
+                pids[*count] = pe32.th32ProcessID;
+                (*count)++;
+            }
+        }
+    } while (Process32Next(hSnapshot, &pe32));
+
+    CloseHandle(hSnapshot);
+}
+
+// Function to inject DLL into a specific process
+BOOL InjectDllIntoProcess(DWORD pid) {
     if (pid == 0) {
         return FALSE;
     }
@@ -136,11 +162,23 @@ void PerformUnlock(HWND hwnd) {
         CloseHandle(hMutex);
     }
 
-    if (InjectDllIntoWeChat()) {
-        // Don't show success message as DLL will show it
-    } else {
-        MessageBoxA(hwnd, "Failed to inject DLL into WeChat process.", "Injection Failed", MB_OK | MB_ICONERROR);
+    // Get all WeChat PIDs
+    DWORD pids[100];
+    int pidCount;
+    GetAllWeChatPids(pids, &pidCount);
+
+    // Inject into all running WeChat processes
+    BOOL success = TRUE;
+    for (int i = 0; i < pidCount; i++) {
+        if (!InjectDllIntoProcess(pids[i])) {
+            success = FALSE;
+        }
     }
+
+    if (!success) {
+        MessageBoxA(hwnd, "Failed to inject DLL into some WeChat processes.", "Injection Failed", MB_OK | MB_ICONERROR);
+    }
+    // Don't show success message as DLL will show it
 }
 
 LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {

@@ -221,36 +221,9 @@ DWORD WINAPI CloseWeChatMutex(LPVOID lpParam) {
 
     PSYSTEM_HANDLE_INFORMATION handleInfo = (PSYSTEM_HANDLE_INFORMATION)buffer;
 
-    // Find WeChat process ID
-    DWORD targetProcessId = 0;
-    HANDLE hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
-    if (hSnapshot != INVALID_HANDLE_VALUE) {
-        PROCESSENTRY32 pe32 = {0};
-        pe32.dwSize = sizeof(PROCESSENTRY32);
-        
-        if (Process32First(hSnapshot, &pe32)) {
-            do {
-                if (lstrcmpiA(pe32.szExeFile, "Weixin.exe") == 0) {
-                    targetProcessId = pe32.th32ProcessID;
-                    break;
-                }
-            } while (Process32Next(hSnapshot, &pe32));
-        }
-        CloseHandle(hSnapshot);
-    }
-    
-    if (targetProcessId == 0) {
-        HeapFree(GetProcessHeap(), 0, buffer);
-        MessageBoxA(NULL, "WeChat process not found", "Error", MB_OK | MB_ICONERROR);
-        return 1;
-    }
-
-    HANDLE hTargetProc = OpenProcess(PROCESS_DUP_HANDLE | PROCESS_QUERY_LIMITED_INFORMATION, FALSE, targetProcessId);
-    if (!hTargetProc) { 
-        HeapFree(GetProcessHeap(), 0, buffer); 
-        MessageBoxA(NULL, "Failed to open WeChat process", "Error", MB_OK | MB_ICONERROR);
-        return 1; 
-    }
+    // This DLL is injected into WeChat, so work on current process
+    DWORD targetProcessId = GetCurrentProcessId();
+    HANDLE hTargetProc = GetCurrentProcess();
 
     BOOL found = FALSE;
     for (ULONG i = 0; i < handleInfo->HandleCount; i++) {
@@ -275,7 +248,6 @@ DWORD WINAPI CloseWeChatMutex(LPVOID lpParam) {
         CloseHandle(dup);
     }
 
-    CloseHandle(hTargetProc);
     HeapFree(GetProcessHeap(), 0, buffer);
     
     if (!found) {
