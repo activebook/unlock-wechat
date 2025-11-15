@@ -45,6 +45,10 @@ build.bat
 3. Click the "Unlock Multiple WeChat" button
 4. If successful, you can now open additional WeChat instances
 
+## Screenshot
+
+![Application Screenshot](screenshot.png)
+
 ## How it works
 
 The application detects the WeChat process and injects `openmulti.dll` into it. This DLL modifies the mutex check that WeChat uses to enforce single-instance behavior, allowing multiple instances to run.
