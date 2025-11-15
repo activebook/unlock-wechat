@@ -214,7 +214,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         CLASS_NAME,
         "Unlock WeChat",
         WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX, // Non-resizable window
-        CW_USEDEFAULT, CW_USEDEFAULT, 300, 150,
+        CW_USEDEFAULT, CW_USEDEFAULT, 300, 120,
         NULL, NULL, hInstance, NULL
     );
 
@@ -226,6 +226,17 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     // Set window icons
     SendMessageA(hwnd, WM_SETICON, ICON_BIG, (LPARAM)hIcon);
     SendMessageA(hwnd, WM_SETICON, ICON_SMALL, (LPARAM)hIcon);
+
+    // Center the window on screen
+    RECT rc;
+    GetWindowRect(hwnd, &rc);
+    int windowWidth = rc.right - rc.left;
+    int windowHeight = rc.bottom - rc.top;
+    int screenWidth = GetSystemMetrics(SM_CXSCREEN);
+    int screenHeight = GetSystemMetrics(SM_CYSCREEN);
+    int x = (screenWidth - windowWidth) / 2;
+    int y = (screenHeight - windowHeight) / 2;
+    MoveWindow(hwnd, x, y, windowWidth, windowHeight, TRUE);
 
     ShowWindow(hwnd, nShowCmd);
     UpdateWindow(hwnd);
