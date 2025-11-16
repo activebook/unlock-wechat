@@ -91,7 +91,7 @@ LRESULT CALLBACK RegisterProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
         SetTextColor((HDC)wParam, RGB(0, 0, 0));
         return (LRESULT)GetStockObject(NULL_BRUSH);
     case WM_DESTROY:
-        PostQuitMessage(0);
+        if (!g_bRegistered) PostQuitMessage(0);
         break;
     default:
         return DefWindowProcA(hwnd, msg, wParam, lParam);
