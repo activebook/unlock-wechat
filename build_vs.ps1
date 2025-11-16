@@ -41,9 +41,9 @@ if ($LASTEXITCODE -ne 0) {
     exit $LASTEXITCODE
 }
 
-Write-Output "Running: cl /W4 src\main.c decrypt.c main.res /link /SUBSYSTEM:WINDOWS user32.lib advapi32.lib kernel32.lib crypt32.lib iphlpapi.lib /OUT:UnlockWeChat.exe"
+Write-Output "Running: cl /W4 src\main.c decrypt.c main.res /link /SUBSYSTEM:WINDOWS user32.lib advapi32.lib kernel32.lib gdi32.lib crypt32.lib iphlpapi.lib /OUT:UnlockWeChat.exe"
 # link explicitly against required libraries to resolve API symbols
-cl /W4 src\main.c decrypt.c main.res /link /SUBSYSTEM:WINDOWS user32.lib advapi32.lib kernel32.lib crypt32.lib iphlpapi.lib /OUT:UnlockWeChat.exe
+cl /W4 src\main.c decrypt.c main.res /link /SUBSYSTEM:WINDOWS user32.lib advapi32.lib kernel32.lib gdi32.lib crypt32.lib iphlpapi.lib /OUT:UnlockWeChat.exe
 if ($LASTEXITCODE -eq 0) {
     Write-Output "Build succeeded: .\UnlockWeChat.exe"
     Write-Output "DLL built: .\openmulti.dll"

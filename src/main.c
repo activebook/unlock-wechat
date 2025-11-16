@@ -86,6 +86,10 @@ LRESULT CALLBACK RegisterProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
             break;
         }
         break;
+    case WM_CTLCOLORSTATIC:
+        SetBkMode((HDC)wParam, TRANSPARENT);
+        SetTextColor((HDC)wParam, RGB(0, 0, 0));
+        return (LRESULT)GetStockObject(NULL_BRUSH);
     case WM_DESTROY:
         PostQuitMessage(0);
         break;
