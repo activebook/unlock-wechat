@@ -15,6 +15,10 @@ HCRYPTPROV hCryptProv = (HCRYPTPROV)NULL;
 // Base32 alphabet (no ambiguous chars like 0,O,1,I)
 static const char BASE32_CHARS[] = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
 
+// Suppress warnings for crypto handles
+#pragma warning(disable:4047)
+#pragma warning(disable:4244)
+
 // Decode from base32
 BOOL DecodeBase32(const char* str, BYTE* out, DWORD* outLen) {
     int bits = 0;

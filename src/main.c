@@ -86,9 +86,9 @@ LRESULT CALLBACK RegisterProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
             break;
         }
         break;
-    case WM_CLOSE:
-        // Prevent closing with X
-        return 0;
+    case WM_DESTROY:
+        PostQuitMessage(0);
+        break;
     default:
         return DefWindowProcA(hwnd, msg, wParam, lParam);
     }
@@ -400,7 +400,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
             0,
             REGISTER_CLASS_NAME,
             "Register",
-            WS_OVERLAPPED | WS_CAPTION | WS_VISIBLE | WS_POPUP,  // No WS_SYSMENU
+            WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_VISIBLE,
             CW_USEDEFAULT, CW_USEDEFAULT, 340, 300,
             NULL, NULL, hInstance, NULL
         );
