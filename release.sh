@@ -6,13 +6,13 @@ source ./env
 set -e
 
 # Check if required files exist
-if [ ! -f "UnlockWeChat.exe" ] || [ ! -f "openmulti.dll" ]; then
-    echo "Error: Required files missing: UnlockWeChat.exe or openmulti.dll"
+if [ ! -f "UnlockWeChat.exe" ] || [ ! -f "openmulti.dll" ] || [ ! -f "public.key" ]; then
+    echo "Error: Required files missing: UnlockWeChat.exe, openmulti.dll, or public.key"
     exit 1
 fi
 
 echo "Creating zip archive..."
-zip UnlockWeChat.zip UnlockWeChat.exe openmulti.dll
+zip UnlockWeChat.zip UnlockWeChat.exe openmulti.dll public.key
 
 echo "Fetching latest tags from remote..."
 git fetch --tags origin
