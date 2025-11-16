@@ -49,6 +49,10 @@ build.bat
 
 ![Application Screenshot](screenshot.png)
 
+![Application Screenshot3](screenshot3.png)
+
+![Application Screenshot2](screenshot2.png)
+
 ## How it works
 
 The application detects the WeChat process and injects `openmulti.dll` into it. This DLL modifies the mutex check that WeChat uses to enforce single-instance behavior, allowing multiple instances to run.
