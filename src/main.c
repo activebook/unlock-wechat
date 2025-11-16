@@ -2,23 +2,13 @@
 #include <stdio.h>
 #include <tlhelp32.h>
 #include "../decrypt.h"
-
-// Icon identifier
-#define IDI_ICON1 101
-
-// Register window control IDs
-#define EDIT_UNIQUE 1101
-#define EDIT_LICENSE 1102
-#define BTN_REGISTER 1103
-#define BTN_EXIT_APP 1104
-
-// License file
-#define LICENSE_FILE "license.key"
+#include "main.h"
 
 // Global handles
 HWND g_hRegisterWindow = NULL;
 HWND g_hMainWindow = NULL;
 BOOL g_bRegistered = FALSE;
+BOOL g_bUnlockRequested = FALSE;
 
 // License functions
 BOOL LoadLicense(char* license, int maxLen) {
@@ -77,6 +67,10 @@ LRESULT CALLBACK RegisterProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
                 SaveLicense(lic);
                 g_bRegistered = TRUE;
                 DestroyWindow(hwnd);
+                if (g_bUnlockRequested) {
+                    g_bUnlockRequested = FALSE;
+                    PerformUnlock(g_hMainWindow);
+                }
             } else {
                 MessageBoxA(hwnd, "Invalid license key.", "Register", MB_OK | MB_ICONERROR);
             }
@@ -91,7 +85,8 @@ LRESULT CALLBACK RegisterProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
         SetTextColor((HDC)wParam, RGB(0, 0, 0));
         return (LRESULT)GetStockObject(NULL_BRUSH);
     case WM_DESTROY:
-        if (!g_bRegistered) PostQuitMessage(0);
+        g_hRegisterWindow = NULL;  // Reset when window is destroyed
+        // Don't quit if not registered - main window is already open
         break;
     default:
         return DefWindowProcA(hwnd, msg, wParam, lParam);
@@ -99,10 +94,7 @@ LRESULT CALLBACK RegisterProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
     return 0;
 }
 
-// Button identifier
-#define BTN_UNLOCK 1001
-
-// Global button handle
+ // Global button handle
 HWND g_hUnlockButton = NULL;
 
 // Function to detect WeChat (Weixin) process
@@ -240,6 +232,44 @@ BOOL InjectDllIntoProcess(DWORD pid) {
 
 // Function to handle unlock process
 void PerformUnlock(HWND hwnd) {
+    // Check license first
+    char license[4096];
+    if (!LoadLicense(license, sizeof(license)) || !CheckLicense(license)) {
+        // Not licensed, show register window
+        g_bUnlockRequested = TRUE;  // Flag that unlock was attempted
+        if (!g_hRegisterWindow) {  // prevent multiple register windows
+            // Create register window class (should already be registered)
+            // Create register window
+            g_hRegisterWindow = CreateWindowExA(
+                0,
+                "RegisterClass",
+                "Register",
+                WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_VISIBLE,
+                CW_USEDEFAULT, CW_USEDEFAULT, 340, 300,
+                NULL, NULL, GetModuleHandle(NULL), NULL
+            );
+
+            if (g_hRegisterWindow) {
+                // Center the register window
+                RECT rc;
+                GetWindowRect(g_hRegisterWindow, &rc);
+                int ww = rc.right - rc.left;
+                int wh = rc.bottom - rc.top;
+                int sx = GetSystemMetrics(SM_CXSCREEN);
+                int sy = GetSystemMetrics(SM_CYSCREEN);
+                int xx = (sx - ww) / 2;
+                int yy = (sy - wh) / 2;
+                MoveWindow(g_hRegisterWindow, xx, yy, ww, wh, TRUE);
+            } else {
+                MessageBoxA(hwnd, "Failed to create register window.", "Error", MB_OK);
+            }
+        } else {
+            // Bring existing register window to front
+            SetForegroundWindow(g_hRegisterWindow);
+        }
+        return;
+    }
+
     if (!FindWeChatProcess()) {
         MessageBoxA(hwnd, "WeChat (Weixin) process not found.\n"
             "Please start WeChat (Weixin) first.",
@@ -361,116 +391,44 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         return 1;
     }
 
-    // Check license
-    char license[4096];
-    BOOL isLicensed = LoadLicense(license, sizeof(license)) && CheckLicense(license);
+    // Always create main window
+    g_hMainWindow = CreateWindowExA(
+        0,
+        CLASS_NAME,
+        "Unlock WeChat",
+        WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX,
+        CW_USEDEFAULT, CW_USEDEFAULT, 300, 120,
+        NULL, NULL, hInstance, NULL
+    );
 
-    if (isLicensed) {
-        // Create main window
-        g_hMainWindow = CreateWindowExA(
-            0,
-            CLASS_NAME,
-            "Unlock WeChat",
-            WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX,
-            CW_USEDEFAULT, CW_USEDEFAULT, 300, 120,
-            NULL, NULL, hInstance, NULL
-        );
-
-        if (!g_hMainWindow) {
-            MessageBoxA(NULL, "Failed to create window.", "Error", MB_OK | MB_ICONERROR);
-            return 0;
-        }
-
-        // Set window icons
-        SendMessageA(g_hMainWindow, WM_SETICON, ICON_BIG, (LPARAM)hIcon);
-        SendMessageA(g_hMainWindow, WM_SETICON, ICON_SMALL, (LPARAM)hIcon);
-
-        // Center the window
-        RECT rc;
-        GetWindowRect(g_hMainWindow, &rc);
-        int ww = rc.right - rc.left;
-        int wh = rc.bottom - rc.top;
-        int sx = GetSystemMetrics(SM_CXSCREEN);
-        int sy = GetSystemMetrics(SM_CYSCREEN);
-        int xx = (sx - ww) / 2;
-        int yy = (sy - wh) / 2;
-        MoveWindow(g_hMainWindow, xx, yy, ww, wh, TRUE);
-
-        ShowWindow(g_hMainWindow, nShowCmd);
-        UpdateWindow(g_hMainWindow);
-    } else {
-        // Create register window
-        g_hRegisterWindow = CreateWindowExA(
-            0,
-            REGISTER_CLASS_NAME,
-            "Register",
-            WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_VISIBLE,
-            CW_USEDEFAULT, CW_USEDEFAULT, 340, 300,
-            NULL, NULL, hInstance, NULL
-        );
-
-        if (!g_hRegisterWindow) {
-            MessageBoxA(NULL, "Failed to create register window.", "Error", MB_OK);
-            return 0;
-        }
-
-        // Center the register window
-        RECT rc;
-        GetWindowRect(g_hRegisterWindow, &rc);
-        int ww = rc.right - rc.left;
-        int wh = rc.bottom - rc.top;
-        int sx = GetSystemMetrics(SM_CXSCREEN);
-        int sy = GetSystemMetrics(SM_CYSCREEN);
-        int xx = (sx - ww) / 2;
-        int yy = (sy - wh) / 2;
-        MoveWindow(g_hRegisterWindow, xx, yy, ww, wh, TRUE);
-        // Already shown
+    if (!g_hMainWindow) {
+        MessageBoxA(NULL, "Failed to create window.", "Error", MB_OK | MB_ICONERROR);
+        return 0;
     }
+
+    // Set window icons
+    SendMessageA(g_hMainWindow, WM_SETICON, ICON_BIG, (LPARAM)hIcon);
+    SendMessageA(g_hMainWindow, WM_SETICON, ICON_SMALL, (LPARAM)hIcon);
+
+    // Center the window
+    RECT rc;
+    GetWindowRect(g_hMainWindow, &rc);
+    int ww = rc.right - rc.left;
+    int wh = rc.bottom - rc.top;
+    int sx = GetSystemMetrics(SM_CXSCREEN);
+    int sy = GetSystemMetrics(SM_CYSCREEN);
+    int xx = (sx - ww) / 2;
+    int yy = (sy - wh) / 2;
+    MoveWindow(g_hMainWindow, xx, yy, ww, wh, TRUE);
+
+    ShowWindow(g_hMainWindow, nShowCmd);
+    UpdateWindow(g_hMainWindow);
 
     // Message loop
     MSG msg;
     while (GetMessageA(&msg, NULL, 0, 0) > 0) {
         TranslateMessage(&msg);
         DispatchMessageA(&msg);
-
-        // Check if register window closed
-        if (g_hRegisterWindow && !IsWindow(g_hRegisterWindow)) {
-            g_hRegisterWindow = NULL;
-            if (g_bRegistered) {
-                // Create main window after registration
-                g_hMainWindow = CreateWindowExA(
-                    0,
-                    CLASS_NAME,
-                    "Unlock WeChat",
-                    WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX,
-                    CW_USEDEFAULT, CW_USEDEFAULT, 300, 120,
-                    NULL, NULL, hInstance, NULL
-                );
-
-                if (g_hMainWindow) {
-                    // Set window icons
-                    SendMessageA(g_hMainWindow, WM_SETICON, ICON_BIG, (LPARAM)hIcon);
-                    SendMessageA(g_hMainWindow, WM_SETICON, ICON_SMALL, (LPARAM)hIcon);
-
-                    // Center the window
-                    RECT rc;
-                    GetWindowRect(g_hMainWindow, &rc);
-                    int ww = rc.right - rc.left;
-                    int wh = rc.bottom - rc.top;
-                    int sx = GetSystemMetrics(SM_CXSCREEN);
-                    int sy = GetSystemMetrics(SM_CYSCREEN);
-                    int xx = (sx - ww) / 2;
-                    int yy = (sy - wh) / 2;
-                    MoveWindow(g_hMainWindow, xx, yy, ww, wh, TRUE);
-
-                    ShowWindow(g_hMainWindow, nShowCmd);
-                    UpdateWindow(g_hMainWindow);
-                }
-            } else {
-                // Exit if not registered
-                PostQuitMessage(0);
-            }
-        }
     }
 
     CleanupDecrypt();

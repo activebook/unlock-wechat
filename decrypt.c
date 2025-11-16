@@ -24,8 +24,8 @@ static const char BASE64_CHARS[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqr
 
 // Decode from base64
 BOOL DecodeBase64(const char* str, BYTE* out, DWORD* outLen) {
-    DWORD len = strlen(str);
-    DWORD i = 0, j = 0;
+    size_t len = strlen(str);
+    size_t i = 0, j = 0;
     
     while (i < len) {
         // Skip whitespace and newlines
@@ -39,31 +39,31 @@ BOOL DecodeBase64(const char* str, BYTE* out, DWORD* outLen) {
         // Find character in BASE64_CHARS
         const char* pos_a = strchr(BASE64_CHARS, str[i]);
         if (!pos_a) return FALSE;
-        DWORD sextet_a = pos_a - BASE64_CHARS;
+        DWORD sextet_a = (DWORD)(pos_a - BASE64_CHARS);
         i++;
         if (i >= len) break;
-        
+
         const char* pos_b = strchr(BASE64_CHARS, str[i]);
         if (!pos_b) return FALSE;
-        DWORD sextet_b = pos_b - BASE64_CHARS;
+        DWORD sextet_b = (DWORD)(pos_b - BASE64_CHARS);
         i++;
-        
+
         DWORD sextet_c = 0, sextet_d = 0;
         BOOL has_c = FALSE, has_d = FALSE;
-        
+
         if (i < len && str[i] != '=' && str[i] != ' ' && str[i] != '\r' && str[i] != '\n' && str[i] != '\t') {
             const char* pos_c = strchr(BASE64_CHARS, str[i]);
             if (pos_c) {
-                sextet_c = pos_c - BASE64_CHARS;
+                sextet_c = (DWORD)(pos_c - BASE64_CHARS);
                 has_c = TRUE;
             }
             i++;
         }
-        
+
         if (i < len && str[i] != '=' && str[i] != ' ' && str[i] != '\r' && str[i] != '\n' && str[i] != '\t') {
             const char* pos_d = strchr(BASE64_CHARS, str[i]);
             if (pos_d) {
-                sextet_d = pos_d - BASE64_CHARS;
+                sextet_d = (DWORD)(pos_d - BASE64_CHARS);
                 has_d = TRUE;
             }
             i++;
@@ -76,7 +76,7 @@ BOOL DecodeBase64(const char* str, BYTE* out, DWORD* outLen) {
         if (has_d) out[j++] = triple & 0xFF;
     }
     
-    *outLen = j;
+    *outLen = (DWORD)j;
     return TRUE;
 }
 
@@ -94,7 +94,7 @@ BOOL PEMToBlob(const char* pem, BYTE** blob, DWORD* blobLen) {
     if (!end) return FALSE;
     
     // Copy base64 content
-    DWORD contentLen = end - start;
+    size_t contentLen = end - start;
     char* base64Content = (char*)malloc(contentLen + 1);
     memcpy(base64Content, start, contentLen);
     base64Content[contentLen] = 0;
@@ -153,7 +153,7 @@ BOOL LoadPublicKey() {
     FILE* f = fopen(PUBLIC_KEY_FILE, "r");
     if (!f) return FALSE;
     fseek(f, 0, SEEK_END);
-    long pemLen = ftell(f);
+    size_t pemLen = (size_t)ftell(f);
     fseek(f, 0, SEEK_SET);
     char* pemContent = (char*)malloc(pemLen + 1);
     fread(pemContent, 1, pemLen, f);
