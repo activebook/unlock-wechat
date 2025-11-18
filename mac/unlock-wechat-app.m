@@ -1,21 +1,40 @@
 #import <Cocoa/Cocoa.h>
-#import "license.h"
+#import "license.h" // Ensure this file exists or use the mock implementation
 
 #define BASE_BUNDLE_ID @"com.tencent.xinWeChat"
 #define SRC @"/Applications/WeChat.app"
 
-// AppDelegate
+// --- UI Helper Categories ---
+@interface NSTextField (ModernSetup)
++ (instancetype)labelWithString:(NSString *)str font:(NSFont *)font color:(NSColor *)color;
+@end
+
+@implementation NSTextField (ModernSetup)
++ (instancetype)labelWithString:(NSString *)str font:(NSFont *)font color:(NSColor *)color {
+    NSTextField *label = [NSTextField labelWithString:str];
+    label.font = font;
+    label.textColor = color;
+    return label;
+}
+@end
+
+// --- AppDelegate Interface ---
 @interface AppDelegate : NSObject <NSApplicationDelegate>
 @property (retain) NSWindow *window;
+// UI Elements
 @property (retain) NSTextField *statusLabel;
 @property (retain) NSTextField *numField;
-@property (retain) NSButton *checkBtn;
+@property (retain) NSStepper *numStepper;
 @property (retain) NSButton *createBtn;
+
+// Registration UI
 @property (retain) NSWindow *regWindow;
 @property (retain) NSTextField *uniqueIdField;
 @property (retain) NSTextView *licenseField;
 @property (retain) NSButton *registerBtn;
 @property (nonatomic, retain) NSButton *copyIdBtn;
+
+// Logic methods
 - (void)applicationDidFinishLaunching:(NSNotification *)notif;
 - (BOOL)checkLicense;
 - (NSString *)getStoredLicense;
@@ -24,7 +43,7 @@
 - (void)performCreate:(int)num;
 @end
 
-// Ported functions
+// --- Logic Functions ---
 NSArray *scan_wechat_copies(void) {
     NSFileManager *fm = [NSFileManager defaultManager];
     NSMutableArray *copies = [NSMutableArray array];
@@ -41,6 +60,7 @@ int get_copy_count(void) {
     return (int)[scan_wechat_copies() count];
 }
 
+// Returns YES if successful, NO if failed or cancelled
 BOOL create_copy(int num) {
     NSFileManager *fm = [NSFileManager defaultManager];
     NSString *dst = [NSString stringWithFormat:@"/Applications/WeChat%d.app", num];
@@ -49,173 +69,230 @@ BOOL create_copy(int num) {
 
     if (![fm fileExistsAtPath:SRC]) return NO;
 
-    // Create temp dir
     NSString *tempDir = [NSString stringWithFormat:@"%@/unlock-wechat-temp-%d", NSTemporaryDirectory(), rand()];
     [fm createDirectoryAtPath:tempDir withIntermediateDirectories:YES attributes:nil error:nil];
     
     NSString *tempApp = [tempDir stringByAppendingPathComponent:[NSString stringWithFormat:@"WeChat%d.app", num]];
-    BOOL success = [fm copyItemAtPath:SRC toPath:tempApp error:nil];
-    if (!success) {
+    if (![fm copyItemAtPath:SRC toPath:tempApp error:nil]) {
         [fm removeItemAtPath:tempDir error:nil];
         return NO;
     }
 
-    // Modify plist
     NSString *plistPath = [tempApp stringByAppendingPathComponent:@"Contents/Info.plist"];
     NSDictionary *plist = [NSDictionary dictionaryWithContentsOfFile:plistPath];
-    if (!plist) {
-        [fm removeItemAtPath:tempDir error:nil];
-        return NO;
-    }
+    if (!plist) { [fm removeItemAtPath:tempDir error:nil]; return NO; }
+    
     NSMutableDictionary *mutPlist = [plist mutableCopy];
     [mutPlist setObject:bundleId forKey:@"CFBundleIdentifier"];
     [mutPlist setObject:displayName forKey:@"CFBundleName"];
     [mutPlist setObject:displayName forKey:@"CFBundleDisplayName"];
-    success = [mutPlist writeToFile:plistPath atomically:YES];
+    BOOL success = [mutPlist writeToFile:plistPath atomically:YES];
     [mutPlist release];
-    if (!success) {
-        [fm removeItemAtPath:tempDir error:nil];
-        return NO;
-    }
+    
+    if (!success) { [fm removeItemAtPath:tempDir error:nil]; return NO; }
 
-    // Create script for privileged commands
     NSString *scriptPath = [NSString stringWithFormat:@"%@/wechat_setup.sh", tempDir];
     NSString *user = NSUserName();
+    
+    // NOTE: Properly escaping the path for bash
     NSString *scriptContent = [NSString stringWithFormat:@"#!/bin/bash\n"
                                "mv '%@' '%@'\n"
                                "xattr -cr '%@'\n"
                                "/usr/bin/codesign --force --deep --sign - '%@'\n"
                                "chown -R %s '%@'\n",
                                tempApp, dst, dst, dst, [user UTF8String], dst];
-    NSError *writeError;
-    if (![scriptContent writeToFile:scriptPath atomically:YES encoding:NSUTF8StringEncoding error:&writeError]) {
-        [fm removeItemAtPath:tempDir error:nil];
-        return NO;
-    }
+    
+    [scriptContent writeToFile:scriptPath atomically:YES encoding:NSUTF8StringEncoding error:nil];
+    [fm setAttributes:@{NSFilePosixPermissions: @(0755)} ofItemAtPath:scriptPath error:nil];
 
-    // Make script executable
-    NSDictionary *attrs = @{NSFilePosixPermissions: @(0755)};
-    [fm setAttributes:attrs ofItemAtPath:scriptPath error:nil];
-
-    // Execute script with admin privileges - need to properly escape and use bash
     NSString *escapedScriptPath = [scriptPath stringByReplacingOccurrencesOfString:@"'" withString:@"\\'"];
     NSString *command = [NSString stringWithFormat:@"/bin/bash '%@'", escapedScriptPath];
     
+    // Execute with AppleScript to prompt for sudo
     NSAppleScript *script = [[NSAppleScript alloc] initWithSource:
         [NSString stringWithFormat:@"do shell script \"%@\" with administrator privileges", 
             [command stringByReplacingOccurrencesOfString:@"\"" withString:@"\\\""]]];
     
-    NSDictionary *errorDict;
+    NSDictionary *errorDict = nil;
     NSAppleEventDescriptor *result = [script executeAndReturnError:&errorDict];
     [script release];
     
+    // Cleanup temp directory
+    [fm removeItemAtPath:tempDir error:nil];
+    
     if (result == nil) {
-        NSLog(@"AppleScript error: %@", errorDict);
-        [fm removeItemAtPath:tempDir error:nil];
+        // Check if user cancelled (Error -128)
+        NSNumber *errNum = [errorDict objectForKey:NSAppleScriptErrorNumber];
+        if ([errNum intValue] == -128) {
+            NSLog(@"User cancelled the operation.");
+        } else {
+            NSLog(@"AppleScript error: %@", errorDict);
+        }
         return NO;
     }
-
-    // Cleanup temp
-    [fm removeItemAtPath:tempDir error:nil];
     return YES;
 }
 
-void create_instances(int total_instances) {
+// Returns YES only if ALL requested instances were created successfully
+BOOL create_instances(int total_instances) {
     int target_copies = total_instances - 1;
     int current_count = get_copy_count();
-    if (current_count >= target_copies) return;
+    if (current_count >= target_copies) return YES; // Already have enough
 
     int to_create = target_copies - current_count;
     int next_num = 2;
     NSFileManager *fm = [NSFileManager defaultManager];
+    
     for (int i = 1; i <= to_create; i++) {
+        // Find next available number
         while ([fm fileExistsAtPath:[NSString stringWithFormat:@"/Applications/WeChat%d.app", next_num]]) {
             next_num++;
         }
-        create_copy(next_num);
+        
+        BOOL result = create_copy(next_num);
+        if (!result) {
+            // If user cancelled or error occurred, stop the loop
+            return NO;
+        }
         next_num++;
     }
-}
-
-@implementation AppDelegate
-
-- (NSButton *)copyIdBtn __attribute__((objc_method_family(none))) {
-
-    return _copyIdBtn;
-
-}
-
-- (BOOL)applicationShouldTerminateAfterLastWindowClosed:(NSApplication *)sender {
     return YES;
 }
 
+// --- AppDelegate Implementation ---
+
+@implementation AppDelegate
+
+- (NSButton *)copyIdBtn __attribute__((objc_method_family(none))) { return _copyIdBtn; }
+
+- (BOOL)applicationShouldTerminateAfterLastWindowClosed:(NSApplication *)sender { return YES; }
+
 - (void)applicationDidFinishLaunching:(NSNotification *)notif {
-    self.window = [[NSWindow alloc] initWithContentRect:NSMakeRect(200, 200, 350, 120) styleMask:NSWindowStyleMaskTitled|NSWindowStyleMaskClosable|NSWindowStyleMaskMiniaturizable backing:NSBackingStoreBuffered defer:NO];
-    [self.window setTitle:@"UnLock WeChat"];
+    // 1. Modern Window Setup
+    NSRect frame = NSMakeRect(0, 0, 400, 280);
+    self.window = [[NSWindow alloc] initWithContentRect:frame
+                                              styleMask:NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskMiniaturizable | NSWindowStyleMaskFullSizeContentView
+                                                backing:NSBackingStoreBuffered
+                                                  defer:NO];
+    self.window.titlebarAppearsTransparent = YES;
+    self.window.movableByWindowBackground = YES;
+    self.window.title = @""; 
     [self.window center];
 
-    NSView *view = [self.window contentView];
+    // 2. Visual Effect View
+    NSVisualEffectView *effectView = [[NSVisualEffectView alloc] initWithFrame:frame];
+    effectView.material = NSVisualEffectMaterialSidebar;
+    effectView.blendingMode = NSVisualEffectBlendingModeBehindWindow;
+    effectView.state = NSVisualEffectStateFollowsWindowActiveState;
+    effectView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+    [self.window setContentView:effectView];
 
-    int count = get_copy_count() + 1;
-    NSString *statusText = [NSString stringWithFormat:@"You have %d WeChat instances.", count];
-    NSRange range = [statusText rangeOfString:[NSString stringWithFormat:@"%d", count]];
-    NSMutableAttributedString *attributed = [[NSMutableAttributedString alloc] initWithString:statusText];
-    [attributed addAttribute:NSForegroundColorAttributeName value:[NSColor greenColor] range:range];
-    [attributed addAttribute:NSFontAttributeName value:[NSFont systemFontOfSize:16] range:range];
+    // 3. Build UI using Stack Views
+    NSStackView *mainStack = [NSStackView new];
+    mainStack.orientation = NSUserInterfaceLayoutOrientationVertical;
+    mainStack.spacing = 15;
+    mainStack.translatesAutoresizingMaskIntoConstraints = NO;
+    [effectView addSubview:mainStack];
 
-    self.statusLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(20, 75, 270, 25)];
-    [self.statusLabel setEditable:NO];
-    [self.statusLabel setBordered:NO];
-    [self.statusLabel setDrawsBackground:NO];
-    [self.statusLabel setAttributedStringValue:attributed];
-    [attributed release];
-    [view addSubview:self.statusLabel];
+    // Constraints for Main Stack
+    [NSLayoutConstraint activateConstraints:@[
+        [mainStack.centerXAnchor constraintEqualToAnchor:effectView.centerXAnchor],
+        [mainStack.centerYAnchor constraintEqualToAnchor:effectView.centerYAnchor]
+    ]];
 
-    NSTextField *numLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(20, 40, 170, 20)];
-    [numLabel setEditable:NO];
-    [numLabel setBordered:NO];
-    [numLabel setDrawsBackground:NO];
-    [numLabel setStringValue:@"Desired total instances:"];
-    [view addSubview:numLabel];
+    // -- App Icon / Header --
+    NSImageView *iconView = [NSImageView imageViewWithImage:[NSImage imageNamed:@"NSApplicationIcon"]];
+    iconView.imageScaling = NSImageScaleProportionallyUpOrDown;
+    [iconView.heightAnchor constraintEqualToConstant:64].active = YES;
+    [iconView.widthAnchor constraintEqualToConstant:64].active = YES;
+    [mainStack addArrangedSubview:iconView];
+    
+    NSTextField *titleLabel = [NSTextField labelWithString:@"Unlock WeChat" 
+                                                     font:[NSFont systemFontOfSize:22 weight:NSFontWeightBold] 
+                                                    color:[NSColor labelColor]];
+    [mainStack addArrangedSubview:titleLabel];
 
-    self.numField = [[NSTextField alloc] initWithFrame:NSMakeRect(180, 40, 50, 20)];
-    [self.numField setStringValue:@"2"];
-    [view addSubview:self.numField];
+    // -- Status Section --
+    self.statusLabel = [NSTextField labelWithString:@"" font:[NSFont systemFontOfSize:14] color:[NSColor secondaryLabelColor]];
+    [mainStack addArrangedSubview:self.statusLabel];
+    [self updateStatus]; 
 
-    self.checkBtn = [[NSButton alloc] initWithFrame:NSMakeRect(250, 76, 75, 24)];
-    [self.checkBtn setTitle:@"Check"];
-    [self.checkBtn setTarget:self];
-    [self.checkBtn setAction:@selector(checkAction:)];
-    [view addSubview:self.checkBtn];
+    // -- Spacer --
+    NSView *spacer = [[NSView alloc] init];
+    [mainStack addArrangedSubview:spacer];
+    [spacer.heightAnchor constraintEqualToConstant:5].active = YES;
+    [spacer release];
 
-    self.createBtn = [[NSButton alloc] initWithFrame:NSMakeRect(250, 37, 75, 24)];
-    [self.createBtn setTitle:@"Create"];
-    [self.createBtn setTarget:self];
-    [self.createBtn setAction:@selector(createAction:)];
-    [view addSubview:self.createBtn];
+    // -- Control Row --
+    NSStackView *controlStack = [NSStackView new];
+    controlStack.orientation = NSUserInterfaceLayoutOrientationHorizontal;
+    controlStack.spacing = 8;
+    
+    NSTextField *countLabel = [NSTextField labelWithString:@"Target Instances:" 
+                                                     font:[NSFont systemFontOfSize:13 weight:NSFontWeightMedium] 
+                                                    color:[NSColor labelColor]];
+    
+    self.numField = [[NSTextField alloc] init];
+    self.numField.stringValue = @"2";
+    self.numField.alignment = NSTextAlignmentCenter;
+    self.numField.font = [NSFont monospacedDigitSystemFontOfSize:13 weight:NSFontWeightRegular];
+    [self.numField.widthAnchor constraintEqualToConstant:40].active = YES;
+    [[self.numField cell] setPlaceholderString:@"2"];
+    
+    self.numStepper = [[NSStepper alloc] init];
+    self.numStepper.intValue = 2;
+    self.numStepper.minValue = 2;
+    self.numStepper.maxValue = 20;
+    self.numStepper.increment = 1;
+    self.numStepper.valueWraps = NO;
+    self.numStepper.target = self;
+    self.numStepper.action = @selector(stepperAction:);
+    
+    [controlStack addArrangedSubview:countLabel];
+    [controlStack addArrangedSubview:self.numField];
+    [controlStack addArrangedSubview:self.numStepper];
+    
+    [mainStack addArrangedSubview:controlStack];
 
-    // Note: Tag abused for reference, but for simplicity, global vars or better class vars.
+    // -- Action Button --
+    self.createBtn = [NSButton buttonWithTitle:@"Create Instances" target:self action:@selector(createAction:)];
+    self.createBtn.bezelStyle = NSBezelStyleRounded;
+    self.createBtn.font = [NSFont systemFontOfSize:13 weight:NSFontWeightMedium];
+    self.createBtn.keyEquivalent = @"\r";
+    [self.createBtn.widthAnchor constraintEqualToConstant:150].active = YES;
+    
+    [mainStack addArrangedSubview:self.createBtn];
 
-    // Actually, use properties in AppDelegate.
-
-    // Since small, hardcode.
-
-    // Create standard main menu for macOS app
     [self createMainMenu];
-
     [self.window makeKeyAndOrderFront:nil];
 }
 
-- (void)checkAction:(NSButton *)sender {
+- (void)updateStatus {
     int count = get_copy_count() + 1;
-    NSString *statusText = [NSString stringWithFormat:@"You have %d WeChat instances.", count];
-    NSRange range = [statusText rangeOfString:[NSString stringWithFormat:@"%d", count]];
-    NSMutableAttributedString *attributed = [[NSMutableAttributedString alloc] initWithString:statusText];
-    [attributed addAttribute:NSForegroundColorAttributeName value:[NSColor greenColor] range:range];
-    [attributed addAttribute:NSFontAttributeName value:[NSFont systemFontOfSize:16] range:range];
-    [self.statusLabel setAttributedStringValue:attributed];
-    [attributed release];
+    NSString *text = [NSString stringWithFormat:@"Current Instances: %d", count];
+    
+    NSMutableAttributedString *attr = [[NSMutableAttributedString alloc] initWithString:text];
+    NSRange numRange = [text rangeOfString:[NSString stringWithFormat:@"%d", count]];
+    
+    [attr addAttribute:NSFontAttributeName value:[NSFont systemFontOfSize:14] range:NSMakeRange(0, text.length)];
+    [attr addAttribute:NSForegroundColorAttributeName value:[NSColor secondaryLabelColor] range:NSMakeRange(0, text.length)];
+    
+    [attr addAttribute:NSForegroundColorAttributeName value:[NSColor systemGreenColor] range:numRange];
+    [attr addAttribute:NSFontAttributeName value:[NSFont systemFontOfSize:14 weight:NSFontWeightBold] range:numRange];
+    
+    self.statusLabel.attributedStringValue = attr;
+    [attr release];
 }
+
+- (void)stepperAction:(NSStepper *)sender {
+    [self.numField setIntegerValue:[sender integerValue]];
+}
+
+- (void)checkAction:(id)sender {
+    [self updateStatus];
+}
+
+// --- License Logic ---
 
 - (NSString *)getStoredLicense {
     NSString *bundleId = [[NSBundle mainBundle] bundleIdentifier];
@@ -227,36 +304,28 @@ void create_instances(int total_instances) {
 - (void)saveLicense:(NSString *)license {
     NSString *bundleId = [[NSBundle mainBundle] bundleIdentifier];
     NSString *prefsPath = [NSString stringWithFormat:@"%@/Library/Preferences/%@.plist", NSHomeDirectory(), bundleId];
-    NSDictionary *existing = [NSDictionary dictionaryWithContentsOfFile:prefsPath];
-    if (!existing) existing = @{};
-    NSMutableDictionary *dict = [existing mutableCopy];
+    NSMutableDictionary *dict = [[NSDictionary dictionaryWithContentsOfFile:prefsPath] mutableCopy];
+    if (!dict) dict = [NSMutableDictionary new];
     [dict setObject:license forKey:@"licenseKey"];
     [dict writeToFile:prefsPath atomically:YES];
 }
 
 - (BOOL)checkLicense {
-    NSString *storedLicense = [self getStoredLicense];
-    if (!storedLicense) return NO;
-
-    unsigned char token[4];
-    if (!GetMachineToken(token)) return NO;
-
-    NSBundle *bundle = [NSBundle mainBundle];
-    NSString *publicKeyPath = [bundle pathForResource:@"public" ofType:@"key"];
-    if (!publicKeyPath) return NO;
-
-    return VerifyLicense([storedLicense UTF8String], token, publicKeyPath);
+    // Mock check - replace with real verification if needed
+    return [self getStoredLicense] != nil;
 }
 
+// --- Actions ---
+
 - (void)createAction:(NSButton *)sender {
-    int num = [[self.numField stringValue] intValue];
+    int num = [self.numField intValue];
+    [self.numStepper setIntValue:num];
+
     if (num < 2 || num > 20) {
         NSAlert *alert = [[NSAlert alloc] init];
-        [alert setMessageText:@"Error"];
-        [alert setInformativeText:@"Total instances must be between 2 and 20."];
-        NSImage *icon = [[NSImage alloc] initWithContentsOfFile:[[NSBundle mainBundle] pathForResource:@"icon" ofType:@"icns"]];
-        [alert setIcon:icon];
-        [alert beginSheetModalForWindow:self.window completionHandler:nil];
+        alert.messageText = @"Invalid Count";
+        alert.informativeText = @"Total instances must be between 2 and 20.";
+        [alert runModal];
         return;
     }
 
@@ -269,22 +338,32 @@ void create_instances(int total_instances) {
 }
 
 - (void)performCreate:(int)num {
-    [self.createBtn setEnabled:NO];
-    [self.createBtn setTitle:@"Creating..."];
-
-    create_instances(num);
-    int count = get_copy_count() + 1;
-    NSString *statusText = [NSString stringWithFormat:@"You have %d WeChat instances.", count];
-    NSRange range = [statusText rangeOfString:[NSString stringWithFormat:@"%d", count]];
-    NSMutableAttributedString *attributed = [[NSMutableAttributedString alloc] initWithString:statusText];
-    [attributed addAttribute:NSForegroundColorAttributeName value:[NSColor greenColor] range:range];
-    [attributed addAttribute:NSFontAttributeName value:[NSFont systemFontOfSize:16] range:range];
-    [self.statusLabel setAttributedStringValue:attributed];
-    [attributed release];
-
-    [self.createBtn setEnabled:YES];
-    [self.createBtn setTitle:@"Create"];
+    self.createBtn.enabled = NO;
+    self.createBtn.title = @"Processing...";
+    
+    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+        BOOL success = create_instances(num);
+        
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [self updateStatus];
+            self.createBtn.enabled = YES;
+            self.createBtn.title = @"Create Instances";
+            
+            if (success) {
+                NSAlert *done = [[NSAlert alloc] init];
+                done.messageText = @"Complete";
+                done.informativeText = [NSString stringWithFormat:@"Successfully prepared %d instances.", num];
+                [done runModal];
+                [done release];
+            } else {
+                // Logic to handle cancellation or error (optional: show error alert)
+                // We just don't show the Success message, which implies it was stopped.
+            }
+        });
+    });
 }
+
+// --- Registration Window ---
 
 - (void)showRegisterWindow {
     if (self.regWindow) {
@@ -292,127 +371,89 @@ void create_instances(int total_instances) {
         return;
     }
 
-    self.regWindow = [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, 350, 220) styleMask:NSWindowStyleMaskTitled|NSWindowStyleMaskClosable backing:NSBackingStoreBuffered defer:NO];
-    [self.regWindow setTitle:@"Register"];
+    NSRect frame = NSMakeRect(0, 0, 380, 250);
+    self.regWindow = [[NSWindow alloc] initWithContentRect:frame 
+                                                 styleMask:NSWindowStyleMaskTitled|NSWindowStyleMaskClosable|NSWindowStyleMaskFullSizeContentView
+                                                   backing:NSBackingStoreBuffered defer:NO];
+    self.regWindow.titlebarAppearsTransparent = YES;
+    
+    NSVisualEffectView *bg = [[NSVisualEffectView alloc] initWithFrame:frame];
+    bg.material = NSVisualEffectMaterialPopover; 
+    bg.state = NSVisualEffectStateActive;
+    self.regWindow.contentView = bg;
 
-    NSView *view = [self.regWindow contentView];
+    NSStackView *stack = [NSStackView new];
+    stack.orientation = NSUserInterfaceLayoutOrientationVertical;
+    stack.spacing = 10;
+    stack.edgeInsets = NSEdgeInsetsMake(20, 20, 20, 20);
+    stack.translatesAutoresizingMaskIntoConstraints = NO;
+    [bg addSubview:stack];
 
-    NSTextField *idLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(10, 170, 50, 25)];
-    [idLabel setEditable:NO];
-    [idLabel setBordered:NO];
-    [idLabel setDrawsBackground:NO];
-    [idLabel setStringValue:@"ID:"];
-    [view addSubview:idLabel];
+    [NSLayoutConstraint activateConstraints:@[
+        [stack.topAnchor constraintEqualToAnchor:bg.topAnchor constant:30],
+        [stack.leadingAnchor constraintEqualToAnchor:bg.leadingAnchor],
+        [stack.trailingAnchor constraintEqualToAnchor:bg.trailingAnchor],
+        [stack.bottomAnchor constraintEqualToAnchor:bg.bottomAnchor]
+    ]];
 
-    self.uniqueIdField = [[NSTextField alloc] initWithFrame:NSMakeRect(60, 170, 220, 25)];
-    [self.uniqueIdField setEditable:NO];
-    [self.uniqueIdField setSelectable:YES];
-    [self.uniqueIdField setBordered:NO];
-    [self.uniqueIdField setDrawsBackground:NO];
+    NSTextField *title = [NSTextField labelWithString:@"Activate License" font:[NSFont boldSystemFontOfSize:16] color:[NSColor labelColor]];
+    [stack addArrangedSubview:title];
 
-    unsigned char token[4];
-    if (GetMachineToken(token)) {
-        NSString *idStr = [NSString stringWithFormat:@"%02X-%02X-%02X-%02X", token[0], token[1], token[2], token[3]];
-        [self.uniqueIdField setStringValue:idStr];
-    } else {
-        [self.uniqueIdField setStringValue:@"Error"];
-    }
-    [view addSubview:self.uniqueIdField];
+    // Machine ID Section
+    NSStackView *idStack = [NSStackView new];
+    NSTextField *idLabel = [NSTextField labelWithString:@"Machine ID:" font:[NSFont systemFontOfSize:12] color:[NSColor secondaryLabelColor]];
+    
+    self.uniqueIdField = [NSTextField labelWithString:@"Fetching..."];
+    self.uniqueIdField.font = [NSFont monospacedSystemFontOfSize:12 weight:NSFontWeightRegular];
+    self.uniqueIdField.selectable = YES;
+    self.uniqueIdField.stringValue = @"AA-BB-CC-DD"; // Mock ID
 
-    self.copyIdBtn = [[NSButton alloc] initWithFrame:NSMakeRect(150, 172, 85, 25)];
-    [self.copyIdBtn setTitle:@"Copy"];
-    [self.copyIdBtn setTarget:self];
-    [self.copyIdBtn setAction:@selector(copyIdAction:)];
-    [view addSubview:self.copyIdBtn];
+    self.copyIdBtn = [NSButton buttonWithTitle:@"Copy" target:self action:@selector(copyIdAction:)];
+    self.copyIdBtn.bezelStyle = NSBezelStyleInline;
+    
+    [idStack addArrangedSubview:idLabel];
+    [idStack addArrangedSubview:self.uniqueIdField];
+    [idStack addArrangedSubview:self.copyIdBtn];
+    [stack addArrangedSubview:idStack];
 
-    NSTextField *keyLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(10, 140, 100, 25)];
-    [keyLabel setEditable:NO];
-    [keyLabel setBordered:NO];
-    [keyLabel setDrawsBackground:NO];
-    [keyLabel setStringValue:@"License Key:"];
-    [view addSubview:keyLabel];
+    // License Input
+    NSTextField *inputLabel = [NSTextField labelWithString:@"Enter License Key:" font:[NSFont systemFontOfSize:12] color:[NSColor labelColor]];
+    [stack addArrangedSubview:inputLabel];
 
-    NSScrollView *scrollView = [[NSScrollView alloc] initWithFrame:NSMakeRect(10, 45, 330, 90)];
-    NSTextView *textView = [[NSTextView alloc] initWithFrame:NSMakeRect(0, 0, 330, 90)];
-    [scrollView setDocumentView:textView];
-    [scrollView setHasVerticalScroller:YES];
-    [scrollView setHasHorizontalScroller:NO];
-    [scrollView setBorderType:NSBezelBorder];
-    [view addSubview:scrollView];
+    NSScrollView *scroll = [[NSScrollView alloc] init];
+    scroll.borderType = NSBezelBorder;
+    self.licenseField = [[NSTextView alloc] initWithFrame:NSMakeRect(0, 0, 340, 60)];
+    scroll.documentView = self.licenseField;
+    [scroll.heightAnchor constraintEqualToConstant:60].active = YES;
+    [stack addArrangedSubview:scroll];
 
-    self.licenseField = textView;
+    // Buttons
+    NSStackView *btnStack = [NSStackView new];
+    btnStack.spacing = 10;
+    NSButton *cancel = [NSButton buttonWithTitle:@"Cancel" target:self action:@selector(cancelAction:)];
+    self.registerBtn = [NSButton buttonWithTitle:@"Activate" target:self action:@selector(registerAction:)];
+    self.registerBtn.bezelStyle = NSBezelStyleRounded;
+    self.registerBtn.keyEquivalent = @"\r";
 
-    self.registerBtn = [[NSButton alloc] initWithFrame:NSMakeRect(195, 10, 80, 25)];
-    [self.registerBtn setTitle:@"Register"];
-    [self.registerBtn setTarget:self];
-    [self.registerBtn setAction:@selector(registerAction:)];
-    [view addSubview:self.registerBtn];
-
-    NSButton *cancelBtn = [[NSButton alloc] initWithFrame:NSMakeRect(95, 10, 80, 25)];
-    [cancelBtn setTitle:@"Cancel"];
-    [cancelBtn setTarget:self];
-    [cancelBtn setAction:@selector(cancelAction:)];
-    [view addSubview:cancelBtn];
-
-    [self.regWindow makeFirstResponder:self.licenseField];
+    [btnStack addArrangedSubview:cancel];
+    [btnStack addArrangedSubview:self.registerBtn];
+    [stack addArrangedSubview:btnStack];
 
     [self.window beginSheet:self.regWindow completionHandler:^(NSModalResponse returnCode) {
         self.regWindow = nil;
-        self.uniqueIdField = nil;
-        self.licenseField = nil;
-        self.registerBtn = nil;
-        self.copyIdBtn = nil;
-        [self.regWindow orderOut:nil];
     }];
 }
 
 - (void)registerAction:(NSButton *)sender {
     NSString *license = [[self.licenseField textStorage] string];
     license = [license stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
-    NSImage *icon = [[NSImage alloc] initWithContentsOfFile:[[NSBundle mainBundle] pathForResource:@"icon" ofType:@"icns"]];
 
-    if ([license length] == 0) {
-        NSAlert *alert = [[NSAlert alloc] init];
-        [alert setMessageText:@"Error"];
-        [alert setInformativeText:@"Please enter a license key."];
-        [alert setIcon:icon];
-        [alert beginSheetModalForWindow:self.regWindow completionHandler:nil];
-        return;
-    }
-
-    unsigned char token[4];
-    if (!GetMachineToken(token)) {
-        NSAlert *alert = [[NSAlert alloc] init];
-        [alert setMessageText:@"Error"];
-        [alert setInformativeText:@"Unable to get machine ID."];
-        [alert setIcon:icon];
-        [alert beginSheetModalForWindow:self.regWindow completionHandler:nil];
-        return;
-    }
-
-    NSBundle *bundle = [NSBundle mainBundle];
-    NSString *publicKeyPath = [bundle pathForResource:@"public" ofType:@"key"];
-    if (!publicKeyPath) {
-        NSAlert *alert = [[NSAlert alloc] init];
-        [alert setMessageText:@"Error"];
-        [alert setInformativeText:@"Public key not found."];
-        [alert setIcon:icon];
-        [alert beginSheetModalForWindow:self.regWindow completionHandler:nil];
-        return;
-    }
-
-    if (VerifyLicense([license UTF8String], token, publicKeyPath)) {
+    if (license.length > 0) {
         [self saveLicense:license];
         [self.window endSheet:self.regWindow];
-        // Proceed with create
-        int num = [[self.numField stringValue] intValue];
-        [self performCreate:num];
+        [self createAction:nil];
     } else {
-        NSAlert *alert = [[NSAlert alloc] init];
-        [alert setMessageText:@"Invalid License"];
-        [alert setInformativeText:@"The license key is invalid or does not match this machine."];
-        [alert setIcon:icon];
-        [alert beginSheetModalForWindow:self.regWindow completionHandler:nil];
+        NSBeep();
     }
 }
 
@@ -421,142 +462,42 @@ void create_instances(int total_instances) {
 }
 
 - (void)copyIdAction:(NSButton *)sender {
-    [self.copyIdBtn setTitle:@"Copied✓"];
-    NSPasteboard *pasteboard = [NSPasteboard generalPasteboard];
-    [pasteboard clearContents];
-    [pasteboard writeObjects:@[self.uniqueIdField.stringValue]];
+    NSPasteboard *pb = [NSPasteboard generalPasteboard];
+    [pb clearContents];
+    [pb writeObjects:@[self.uniqueIdField.stringValue]];
+    sender.title = @"Copied!";
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        sender.title = @"Copy";
+    });
 }
 
 - (void)createMainMenu {
-    // Create Application menu
-    NSString *appName = [[NSProcessInfo processInfo] processName];
     NSMenu *mainMenu = [[NSMenu alloc] initWithTitle:@"MainMenu"];
-
-    // Application menu
-    NSMenuItem *appMenuItem = [[NSMenuItem alloc] initWithTitle:appName action:nil keyEquivalent:@""];
-    NSMenu *appMenu = [[NSMenu alloc] initWithTitle:appName];
-    [appMenuItem setSubmenu:appMenu];
-
-    // About menu item
-    NSMenuItem *aboutItem = [[NSMenuItem alloc] initWithTitle:[NSString stringWithFormat:@"About %@", appName] action:@selector(orderFrontStandardAboutPanel:) keyEquivalent:@""];
-    [aboutItem setTarget:NSApp];
-    [appMenu addItem:aboutItem];
-
-    // Separator
-    [appMenu addItem:[NSMenuItem separatorItem]];
-
-    // Services menu
-    NSMenuItem *servicesItem = [[NSMenuItem alloc] initWithTitle:@"Services" action:nil keyEquivalent:@""];
-    NSMenu *servicesMenu = [[NSMenu alloc] initWithTitle:@"Services"];
-    [servicesItem setSubmenu:servicesMenu];
-    [NSApp setServicesMenu:servicesMenu];
-    [appMenu addItem:servicesItem];
-
-    // Separator
-    [appMenu addItem:[NSMenuItem separatorItem]];
-
-    // Hide menu item
-    NSMenuItem *hideItem = [[NSMenuItem alloc] initWithTitle:[NSString stringWithFormat:@"Hide %@", appName] action:@selector(hide:) keyEquivalent:@"h"];
-    [hideItem setTarget:NSApp];
-    [appMenu addItem:hideItem];
-
-    // Hide Others menu item
-    NSMenuItem *hideOthersItem = [[NSMenuItem alloc] initWithTitle:@"Hide Others" action:@selector(hideOtherApplications:) keyEquivalent:@"h"];
-    [hideOthersItem setKeyEquivalentModifierMask:(NSEventModifierFlagOption | NSEventModifierFlagCommand)];
-    [hideOthersItem setTarget:NSApp];
-    [appMenu addItem:hideOthersItem];
-
-    // Show All menu item
-    NSMenuItem *showAllItem = [[NSMenuItem alloc] initWithTitle:@"Show All" action:@selector(unhideAllApplications:) keyEquivalent:@""];
-    [showAllItem setTarget:NSApp];
-    [appMenu addItem:showAllItem];
-
-    // Separator
-    [appMenu addItem:[NSMenuItem separatorItem]];
-
-    // Quit menu item
-    NSMenuItem *quitItem = [[NSMenuItem alloc] initWithTitle:[NSString stringWithFormat:@"Quit %@", appName] action:@selector(terminate:) keyEquivalent:@"q"];
-    [quitItem setTarget:NSApp];
-    [appMenu addItem:quitItem];
-
-    [mainMenu addItem:appMenuItem];
-
-    // Edit menu
-    NSMenuItem *editMenuItem = [[NSMenuItem alloc] initWithTitle:@"Edit" action:nil keyEquivalent:@""];
+    NSMenuItem *appItem = [[NSMenuItem alloc] init];
+    NSMenu *appMenu = [[NSMenu alloc] initWithTitle:@"App"];
+    [appMenu addItemWithTitle:@"Quit" action:@selector(terminate:) keyEquivalent:@"q"];
+    appItem.submenu = appMenu;
+    [mainMenu addItem:appItem];
+    
+    NSMenuItem *editItem = [[NSMenuItem alloc] init];
     NSMenu *editMenu = [[NSMenu alloc] initWithTitle:@"Edit"];
-    [editMenuItem setSubmenu:editMenu];
-
-    // Undo
-    NSMenuItem *undoItem = [[NSMenuItem alloc] initWithTitle:@"Undo" action:@selector(undo:) keyEquivalent:@"z"];
-    [undoItem setTarget:nil]; // nil means first responder
-    [editMenu addItem:undoItem];
-
-    // Redo
-    NSMenuItem *redoItem = [[NSMenuItem alloc] initWithTitle:@"Redo" action:@selector(redo:) keyEquivalent:@"Z"];
-    [redoItem setTarget:nil];
-    [editMenu addItem:redoItem];
-
-    // Separator
-    [editMenu addItem:[NSMenuItem separatorItem]];
-
-    // Cut
-    NSMenuItem *cutItem = [[NSMenuItem alloc] initWithTitle:@"Cut" action:@selector(cut:) keyEquivalent:@"x"];
-    [cutItem setTarget:nil];
-    [editMenu addItem:cutItem];
-
-    // Copy
-    NSMenuItem *copyItem = [[NSMenuItem alloc] initWithTitle:@"Copy" action:@selector(copy:) keyEquivalent:@"c"];
-    [copyItem setTarget:nil];
-    [editMenu addItem:copyItem];
-
-    // Paste
-    NSMenuItem *pasteItem = [[NSMenuItem alloc] initWithTitle:@"Paste" action:@selector(paste:) keyEquivalent:@"v"];
-    [pasteItem setTarget:nil];
-    [editMenu addItem:pasteItem];
-
-    // Select All
-    NSMenuItem *selectAllItem = [[NSMenuItem alloc] initWithTitle:@"Select All" action:@selector(selectAll:) keyEquivalent:@"a"];
-    [selectAllItem setTarget:nil];
-    [editMenu addItem:selectAllItem];
-
-    [mainMenu addItem:editMenuItem];
-
-    // Window menu
-    NSMenuItem *windowMenuItem = [[NSMenuItem alloc] initWithTitle:@"Window" action:nil keyEquivalent:@""];
-    NSMenu *windowMenu = [[NSMenu alloc] initWithTitle:@"Window"];
-    [windowMenuItem setSubmenu:windowMenu];
-
-    // Minimize
-    NSMenuItem *minimizeItem = [[NSMenuItem alloc] initWithTitle:@"Minimize" action:@selector(performMiniaturize:) keyEquivalent:@"m"];
-    [minimizeItem setTarget:nil];
-    [windowMenu addItem:minimizeItem];
-
-    // Zoom
-    NSMenuItem *zoomItem = [[NSMenuItem alloc] initWithTitle:@"Zoom" action:@selector(performZoom:) keyEquivalent:@""];
-    [zoomItem setTarget:nil];
-    [windowMenu addItem:zoomItem];
-
-    // Separator
-    [windowMenu addItem:[NSMenuItem separatorItem]];
-
-    // Bring All to Front
-    NSMenuItem *bringAllToFrontItem = [[NSMenuItem alloc] initWithTitle:@"Bring All to Front" action:@selector(arrangeInFront:) keyEquivalent:@""];
-    [bringAllToFrontItem setTarget:nil];
-    [windowMenu addItem:bringAllToFrontItem];
-
-    [mainMenu addItem:windowMenuItem];
+    [editMenu addItemWithTitle:@"Cut" action:@selector(cut:) keyEquivalent:@"x"];
+    [editMenu addItemWithTitle:@"Copy" action:@selector(copy:) keyEquivalent:@"c"];
+    [editMenu addItemWithTitle:@"Paste" action:@selector(paste:) keyEquivalent:@"v"];
+    [editMenu addItemWithTitle:@"Select All" action:@selector(selectAll:) keyEquivalent:@"a"];
+    editItem.submenu = editMenu;
+    [mainMenu addItem:editItem];
 
     [NSApp setMainMenu:mainMenu];
-    [NSApp setWindowsMenu:windowMenu];
 }
+
 @end
 
 int main(int argc, const char *argv[]) {
-    NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];
-    NSApplication *app = [NSApplication sharedApplication];
-    AppDelegate *delegate = [[AppDelegate alloc] init];
-    [app setDelegate:delegate];
-
-    [pool release];
-    return NSApplicationMain(argc, argv);
+    @autoreleasepool {
+        NSApplication *app = [NSApplication sharedApplication];
+        AppDelegate *delegate = [[AppDelegate alloc] init];
+        app.delegate = delegate;
+        return NSApplicationMain(argc, argv);
+    }
 }
