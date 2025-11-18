@@ -6,6 +6,10 @@
 // AppDelegate
 @interface AppDelegate : NSObject <NSApplicationDelegate>
 @property (retain) NSWindow *window;
+@property (retain) NSTextField *statusLabel;
+@property (retain) NSTextField *numField;
+@property (retain) NSButton *checkBtn;
+@property (retain) NSButton *createBtn;
 - (void)applicationDidFinishLaunching:(NSNotification *)notif;
 @end
 
@@ -129,7 +133,7 @@ void create_instances(int total_instances) {
 }
 
 - (void)applicationDidFinishLaunching:(NSNotification *)notif {
-    self.window = [[NSWindow alloc] initWithContentRect:NSMakeRect(200, 200, 400, 160) styleMask:NSWindowStyleMaskTitled|NSWindowStyleMaskClosable|NSWindowStyleMaskMiniaturizable backing:NSBackingStoreBuffered defer:NO];
+    self.window = [[NSWindow alloc] initWithContentRect:NSMakeRect(200, 200, 350, 120) styleMask:NSWindowStyleMaskTitled|NSWindowStyleMaskClosable|NSWindowStyleMaskMiniaturizable backing:NSBackingStoreBuffered defer:NO];
     [self.window setTitle:@"UnLock WeChat"];
     [self.window center];
 
@@ -142,36 +146,36 @@ void create_instances(int total_instances) {
     [attributed addAttribute:NSForegroundColorAttributeName value:[NSColor greenColor] range:range];
     [attributed addAttribute:NSFontAttributeName value:[NSFont systemFontOfSize:16] range:range];
 
-    NSTextField *statusLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(20, 95, 250, 25)];
-    [statusLabel setEditable:NO];
-    [statusLabel setBordered:NO];
-    [statusLabel setDrawsBackground:NO];
-    [statusLabel setAttributedStringValue:attributed];
+    self.statusLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(20, 75, 270, 25)];
+    [self.statusLabel setEditable:NO];
+    [self.statusLabel setBordered:NO];
+    [self.statusLabel setDrawsBackground:NO];
+    [self.statusLabel setAttributedStringValue:attributed];
     [attributed release];
-    [view addSubview:statusLabel];
+    [view addSubview:self.statusLabel];
 
-    NSTextField *numLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(20, 55, 170, 20)];
+    NSTextField *numLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(20, 40, 170, 20)];
     [numLabel setEditable:NO];
     [numLabel setBordered:NO];
     [numLabel setDrawsBackground:NO];
     [numLabel setStringValue:@"Desired total instances:"];
     [view addSubview:numLabel];
 
-    NSTextField *numField = [[NSTextField alloc] initWithFrame:NSMakeRect(193, 55, 50, 20)];
-    [numField setStringValue:@"2"];
-    [view addSubview:numField];
+    self.numField = [[NSTextField alloc] initWithFrame:NSMakeRect(180, 40, 50, 20)];
+    [self.numField setStringValue:@"2"];
+    [view addSubview:self.numField];
 
-    NSButton *checkBtn = [[NSButton alloc] initWithFrame:NSMakeRect(260, 95, 80, 24)];
-    [checkBtn setTitle:@"Check"];
-    [checkBtn setTarget:self];
-    [checkBtn setAction:@selector(checkAction:)];
-    [view addSubview:checkBtn];
+    self.checkBtn = [[NSButton alloc] initWithFrame:NSMakeRect(250, 76, 75, 24)];
+    [self.checkBtn setTitle:@"Check"];
+    [self.checkBtn setTarget:self];
+    [self.checkBtn setAction:@selector(checkAction:)];
+    [view addSubview:self.checkBtn];
 
-    NSButton *createBtn = [[NSButton alloc] initWithFrame:NSMakeRect(260, 52, 80, 24)];
-    [createBtn setTitle:@"Create"];
-    [createBtn setTarget:self];
-    [createBtn setAction:@selector(createAction:)];
-    [view addSubview:createBtn];
+    self.createBtn = [[NSButton alloc] initWithFrame:NSMakeRect(250, 38, 75, 24)];
+    [self.createBtn setTitle:@"Create"];
+    [self.createBtn setTarget:self];
+    [self.createBtn setAction:@selector(createAction:)];
+    [view addSubview:self.createBtn];
 
     // Note: Tag abused for reference, but for simplicity, global vars or better class vars.
 
@@ -183,47 +187,18 @@ void create_instances(int total_instances) {
 }
 
 - (void)checkAction:(NSButton *)sender {
-    NSView *view = [self.window contentView];
-    NSTextField *statusLabel = nil;
-    for (id sub in [view subviews]) {
-        if ([sub isKindOfClass:[NSTextField class]] && [sub frame].origin.y == 95) {
-            statusLabel = sub;
-            break;
-        }
-    }
-    if (statusLabel) {
-        int count = get_copy_count() + 1;
-        NSString *statusText = [NSString stringWithFormat:@"You have %d WeChat instances.", count];
-        NSRange range = [statusText rangeOfString:[NSString stringWithFormat:@"%d", count]];
-        NSMutableAttributedString *attributed = [[NSMutableAttributedString alloc] initWithString:statusText];
-        [attributed addAttribute:NSForegroundColorAttributeName value:[NSColor greenColor] range:range];
-        [attributed addAttribute:NSFontAttributeName value:[NSFont systemFontOfSize:16] range:range];
-        [statusLabel setAttributedStringValue:attributed];
-        [attributed release];
-    }
+    int count = get_copy_count() + 1;
+    NSString *statusText = [NSString stringWithFormat:@"You have %d WeChat instances.", count];
+    NSRange range = [statusText rangeOfString:[NSString stringWithFormat:@"%d", count]];
+    NSMutableAttributedString *attributed = [[NSMutableAttributedString alloc] initWithString:statusText];
+    [attributed addAttribute:NSForegroundColorAttributeName value:[NSColor greenColor] range:range];
+    [attributed addAttribute:NSFontAttributeName value:[NSFont systemFontOfSize:16] range:range];
+    [self.statusLabel setAttributedStringValue:attributed];
+    [attributed release];
 }
 
 - (void)createAction:(NSButton *)sender {
-    NSView *view = [self.window contentView];
-    NSTextField *numField = nil;
-    for (id sub in [view subviews]) {
-        if ([sub isKindOfClass:[NSTextField class]] && [sub frame].origin.x == 193) {
-            numField = sub;
-            break;
-        }
-    }
-    NSButton *createBtn = nil;
-    NSTextField *statusLabel = nil;
-    for (id sub in [view subviews]) {
-        if ([sub isKindOfClass:[NSTextField class]] && [sub frame].origin.y == 95) {
-            statusLabel = sub;
-        } else if ([sub isKindOfClass:[NSButton class]] && [sub frame].origin.x == 260 && [sub frame].origin.y == 52) {
-            createBtn = sub;
-        }
-    }
-    if (!numField || !statusLabel || !createBtn) return;
-
-    int num = [[numField stringValue] intValue];
+    int num = [[self.numField stringValue] intValue];
     if (num < 2 || num > 20) {
         NSAlert *alert = [[NSAlert alloc] init];
         [alert setMessageText:@"Error"];
@@ -234,8 +209,8 @@ void create_instances(int total_instances) {
         return;
     }
 
-    [createBtn setEnabled:NO];
-    [createBtn setTitle:@"Creating..."];
+    [self.createBtn setEnabled:NO];
+    [self.createBtn setTitle:@"Creating..."];
 
     create_instances(num);
     int count = get_copy_count() + 1;
@@ -244,16 +219,16 @@ void create_instances(int total_instances) {
     NSMutableAttributedString *attributed = [[NSMutableAttributedString alloc] initWithString:statusText];
     [attributed addAttribute:NSForegroundColorAttributeName value:[NSColor greenColor] range:range];
     [attributed addAttribute:NSFontAttributeName value:[NSFont systemFontOfSize:16] range:range];
-    [statusLabel setAttributedStringValue:attributed];
+    [self.statusLabel setAttributedStringValue:attributed];
     [attributed release];
 
-    [createBtn setEnabled:YES];
-    [createBtn setTitle:@"Create"];
+    [self.createBtn setEnabled:YES];
+    [self.createBtn setTitle:@"Create"];
 }
 
 @end
 
-int main(int argc, char *argv[]) {
+int main(int argc, const char *argv[]) {
     NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];
     NSApplication *app = [NSApplication sharedApplication];
     AppDelegate *delegate = [[AppDelegate alloc] init];
