@@ -1,4 +1,5 @@
 #import <Cocoa/Cocoa.h>
+#import "license.h"
 
 #define BASE_BUNDLE_ID @"com.tencent.xinWeChat"
 #define SRC @"/Applications/WeChat.app"
@@ -10,7 +11,14 @@
 @property (retain) NSTextField *numField;
 @property (retain) NSButton *checkBtn;
 @property (retain) NSButton *createBtn;
+@property (retain) NSWindow *regWindow;
+@property (retain) NSTextField *uniqueIdField;
+@property (retain) NSTextView *licenseField;
+@property (retain) NSButton *registerBtn;
 - (void)applicationDidFinishLaunching:(NSNotification *)notif;
+- (BOOL)checkLicense;
+- (void)showRegisterWindow;
+- (void)performCreate:(int)num;
 @end
 
 // Ported functions
@@ -197,6 +205,21 @@ void create_instances(int total_instances) {
     [attributed release];
 }
 
+- (BOOL)checkLicense {
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    NSString *storedLicense = [defaults objectForKey:@"licenseKey"];
+    if (!storedLicense) return NO;
+
+    unsigned char token[4];
+    if (!GetMachineToken(token)) return NO;
+
+    NSBundle *bundle = [NSBundle mainBundle];
+    NSString *publicKeyPath = [bundle pathForResource:@"public" ofType:@"key"];
+    if (!publicKeyPath) return NO;
+
+    return VerifyLicense([storedLicense UTF8String], token, publicKeyPath);
+}
+
 - (void)createAction:(NSButton *)sender {
     int num = [[self.numField stringValue] intValue];
     if (num < 2 || num > 20) {
@@ -209,6 +232,15 @@ void create_instances(int total_instances) {
         return;
     }
 
+    if (![self checkLicense]) {
+        [self showRegisterWindow];
+        return;
+    }
+
+    [self performCreate:num];
+}
+
+- (void)performCreate:(int)num {
     [self.createBtn setEnabled:NO];
     [self.createBtn setTitle:@"Creating..."];
 
@@ -226,6 +258,124 @@ void create_instances(int total_instances) {
     [self.createBtn setTitle:@"Create"];
 }
 
+- (void)showRegisterWindow {
+    if (self.regWindow) {
+        [self.regWindow makeKeyAndOrderFront:nil];
+        return;
+    }
+
+    self.regWindow = [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, 350, 180) styleMask:NSWindowStyleMaskTitled|NSWindowStyleMaskClosable backing:NSBackingStoreBuffered defer:NO];
+    [self.regWindow setTitle:@"Register"];
+
+    NSView *view = [self.regWindow contentView];
+
+    NSTextField *idLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(10, 125, 50, 25)];
+    [idLabel setEditable:NO];
+    [idLabel setBordered:NO];
+    [idLabel setDrawsBackground:NO];
+    [idLabel setStringValue:@"ID:"];
+    [view addSubview:idLabel];
+
+    self.uniqueIdField = [[NSTextField alloc] initWithFrame:NSMakeRect(60, 125, 280, 25)];
+    [self.uniqueIdField setEditable:NO];
+    [self.uniqueIdField setBordered:NO];
+    [self.uniqueIdField setDrawsBackground:NO];
+
+    unsigned char token[4];
+    if (GetMachineToken(token)) {
+        NSString *idStr = [NSString stringWithFormat:@"%02X-%02X-%02X-%02X", token[0], token[1], token[2], token[3]];
+        [self.uniqueIdField setStringValue:idStr];
+    } else {
+        [self.uniqueIdField setStringValue:@"Error"];
+    }
+    [view addSubview:self.uniqueIdField];
+
+    NSTextField *keyLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(10, 90, 100, 25)];
+    [keyLabel setEditable:NO];
+    [keyLabel setBordered:NO];
+    [keyLabel setDrawsBackground:NO];
+    [keyLabel setStringValue:@"License Key:"];
+    [view addSubview:keyLabel];
+
+    NSScrollView *scrollView = [[NSScrollView alloc] initWithFrame:NSMakeRect(10, 35, 330, 50)];
+    NSTextView *textView = [[NSTextView alloc] initWithFrame:NSMakeRect(0, 0, 330, 50)];
+    [scrollView setDocumentView:textView];
+    [scrollView setHasVerticalScroller:YES];
+    [scrollView setHasHorizontalScroller:NO];
+    [scrollView setBorderType:NSBezelBorder];
+    [view addSubview:scrollView];
+
+    self.licenseField = textView;
+
+    self.registerBtn = [[NSButton alloc] initWithFrame:NSMakeRect(195, 5, 80, 25)];
+    [self.registerBtn setTitle:@"Register"];
+    [self.registerBtn setTarget:self];
+    [self.registerBtn setAction:@selector(registerAction:)];
+    [view addSubview:self.registerBtn];
+
+    NSButton *cancelBtn = [[NSButton alloc] initWithFrame:NSMakeRect(95, 5, 80, 25)];
+    [cancelBtn setTitle:@"Cancel"];
+    [cancelBtn setTarget:self];
+    [cancelBtn setAction:@selector(cancelAction:)];
+    [view addSubview:cancelBtn];
+
+    [self.window beginSheet:self.regWindow completionHandler:^(NSModalResponse returnCode) {
+        self.regWindow = nil;
+        self.uniqueIdField = nil;
+        self.licenseField = nil;
+        self.registerBtn = nil;
+        [self.regWindow orderOut:nil];
+    }];
+}
+
+- (void)registerAction:(NSButton *)sender {
+    NSString *license = [[self.licenseField textStorage] string];
+    license = [license stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+    if ([license length] == 0) {
+        NSAlert *alert = [[NSAlert alloc] init];
+        [alert setMessageText:@"Error"];
+        [alert setInformativeText:@"Please enter a license key."];
+        [alert beginSheetModalForWindow:self.regWindow completionHandler:nil];
+        return;
+    }
+
+    unsigned char token[4];
+    if (!GetMachineToken(token)) {
+        NSAlert *alert = [[NSAlert alloc] init];
+        [alert setMessageText:@"Error"];
+        [alert setInformativeText:@"Unable to get machine ID."];
+        [alert beginSheetModalForWindow:self.regWindow completionHandler:nil];
+        return;
+    }
+
+    NSBundle *bundle = [NSBundle mainBundle];
+    NSString *publicKeyPath = [bundle pathForResource:@"public" ofType:@"key"];
+    if (!publicKeyPath) {
+        NSAlert *alert = [[NSAlert alloc] init];
+        [alert setMessageText:@"Error"];
+        [alert setInformativeText:@"Public key not found."];
+        [alert beginSheetModalForWindow:self.regWindow completionHandler:nil];
+        return;
+    }
+
+    if (VerifyLicense([license UTF8String], token, publicKeyPath)) {
+        NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+        [defaults setObject:license forKey:@"licenseKey"];
+        [self.window endSheet:self.regWindow];
+        // Proceed with create
+        int num = [[self.numField stringValue] intValue];
+        [self performCreate:num];
+    } else {
+        NSAlert *alert = [[NSAlert alloc] init];
+        [alert setMessageText:@"Invalid License"];
+        [alert setInformativeText:@"The license key is invalid or does not match this machine."];
+        [alert beginSheetModalForWindow:self.regWindow completionHandler:nil];
+    }
+}
+
+- (void)cancelAction:(NSButton *)sender {
+    [self.window endSheet:self.regWindow];
+}
 @end
 
 int main(int argc, const char *argv[]) {
