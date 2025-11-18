@@ -212,14 +212,16 @@ void create_instances(int total_instances) {
             break;
         }
     }
+    NSButton *createBtn = nil;
     NSTextField *statusLabel = nil;
     for (id sub in [view subviews]) {
         if ([sub isKindOfClass:[NSTextField class]] && [sub frame].origin.y == 95) {
             statusLabel = sub;
-            break;
+        } else if ([sub isKindOfClass:[NSButton class]] && [sub frame].origin.x == 260 && [sub frame].origin.y == 52) {
+            createBtn = sub;
         }
     }
-    if (!numField || !statusLabel) return;
+    if (!numField || !statusLabel || !createBtn) return;
 
     int num = [[numField stringValue] intValue];
     if (num < 2 || num > 20) {
@@ -232,6 +234,9 @@ void create_instances(int total_instances) {
         return;
     }
 
+    [createBtn setEnabled:NO];
+    [createBtn setTitle:@"Creating..."];
+
     create_instances(num);
     int count = get_copy_count() + 1;
     NSString *statusText = [NSString stringWithFormat:@"You have %d WeChat instances.", count];
@@ -241,6 +246,9 @@ void create_instances(int total_instances) {
     [attributed addAttribute:NSFontAttributeName value:[NSFont systemFontOfSize:16] range:range];
     [statusLabel setAttributedStringValue:attributed];
     [attributed release];
+
+    [createBtn setEnabled:YES];
+    [createBtn setTitle:@"Create"];
 }
 
 @end
