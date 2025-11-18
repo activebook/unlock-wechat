@@ -4,9 +4,10 @@ LDFLAGS=-framework AppKit -framework Foundation -framework Security
 
 TARGET=UnLockWeChat.app/Contents/MacOS/unlock-wechat-app
 
-all: $(TARGET) icon key
+all: $(TARGET) icon key info
 
 $(TARGET): unlock-wechat-app.o license.o
+	mkdir -p UnLockWeChat.app/Contents/MacOS
 	$(CC) $(LDFLAGS) -o $@ unlock-wechat-app.o license.o
 
 unlock-wechat-app.o: unlock-wechat-app.m
@@ -23,11 +24,17 @@ UnLockWeChat.app/Contents/Resources/icon.icns: icon.icns
 
 key: UnLockWeChat.app/Contents/Resources/public.key
 
-UnLockWeChat.app/Contents/Resources/public.key: ../public.key
+UnLockWeChat.app/Contents/Resources/public.key: public.key
 	mkdir -p UnLockWeChat.app/Contents/Resources
+	cp $< $@
+
+info: UnLockWeChat.app/Contents/Info.plist
+
+UnLockWeChat.app/Contents/Info.plist: Info.plist
+	mkdir -p UnLockWeChat.app/Contents
 	cp $< $@
 
 clean:
 	rm -f *.o $(TARGET)
 
-.PHONY: clean all icon key
+.PHONY: clean all icon key info

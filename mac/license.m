@@ -58,6 +58,34 @@ bool DecodeBase32(const char* str, unsigned char* out, int* outLen) {
     return true;
 }
 
+// Parse unique ID from string (supports xxxxxxxx and xx-xx-xx-xx formats)
+bool ParseUniqueID(const char* str, unsigned char* out) {
+    char clean[9];
+    int idx = 0;
+
+    // Strip dashes and collect hex digits
+    for (int i = 0; str[i]; i++) {
+        if (str[i] != '-') {
+            if (idx >= 8) return false;
+            clean[idx++] = str[i];
+        }
+    }
+
+    // Must have exactly 8 hex digits
+    if (idx != 8) return false;
+
+    // Parse pairs of hex digits to bytes
+    for (int i = 0; i < 8; i += 2) {
+        char buf[3] = {clean[i], clean[i+1], 0};
+        char* end;
+        unsigned long val = strtol(buf, &end, 16);
+        if (end != buf + 2 || val > 0xFF) return false;
+        out[i/2] = (unsigned char)val;
+    }
+
+    return true;
+}
+
 // Get machine-specific token from MAC address
 bool GetMachineToken(unsigned char* token) {
     struct ifaddrs *ifap, *ifaptr;
@@ -183,4 +211,13 @@ bool VerifyLicense(const char* license, const unsigned char* expectedToken, NSSt
 
         return result;
     }
+}
+
+// Verify license with string unique ID
+bool VerifyLicenseFromString(const char* license, const char* expectedUniqueID, NSString* publicKeyPath) {
+    unsigned char token[4];
+    if (!ParseUniqueID(expectedUniqueID, token)) {
+        return false;
+    }
+    return VerifyLicense(license, token, publicKeyPath);
 }

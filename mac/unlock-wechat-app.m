@@ -186,7 +186,7 @@ void create_instances(int total_instances) {
     [self.checkBtn setAction:@selector(checkAction:)];
     [view addSubview:self.checkBtn];
 
-    self.createBtn = [[NSButton alloc] initWithFrame:NSMakeRect(250, 38, 75, 24)];
+    self.createBtn = [[NSButton alloc] initWithFrame:NSMakeRect(250, 37, 75, 24)];
     [self.createBtn setTitle:@"Create"];
     [self.createBtn setTarget:self];
     [self.createBtn setAction:@selector(createAction:)];
