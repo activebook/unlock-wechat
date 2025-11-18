@@ -226,8 +226,8 @@ void create_instances(int total_instances) {
         NSAlert *alert = [[NSAlert alloc] init];
         [alert setMessageText:@"Error"];
         [alert setInformativeText:@"Total instances must be between 2 and 20."];
-        NSImage *icon = [NSImage imageNamed:@"icon"];
-        if (icon) [alert setIcon:icon];
+        NSImage *icon = [[NSImage alloc] initWithContentsOfFile:[[NSBundle mainBundle] pathForResource:@"icon" ofType:@"icns"]];
+        [alert setIcon:icon];
         [alert beginSheetModalForWindow:self.window completionHandler:nil];
         return;
     }
@@ -331,10 +331,13 @@ void create_instances(int total_instances) {
 - (void)registerAction:(NSButton *)sender {
     NSString *license = [[self.licenseField textStorage] string];
     license = [license stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+    NSImage *icon = [[NSImage alloc] initWithContentsOfFile:[[NSBundle mainBundle] pathForResource:@"icon" ofType:@"icns"]];
+
     if ([license length] == 0) {
         NSAlert *alert = [[NSAlert alloc] init];
         [alert setMessageText:@"Error"];
         [alert setInformativeText:@"Please enter a license key."];
+        [alert setIcon:icon];
         [alert beginSheetModalForWindow:self.regWindow completionHandler:nil];
         return;
     }
@@ -344,6 +347,7 @@ void create_instances(int total_instances) {
         NSAlert *alert = [[NSAlert alloc] init];
         [alert setMessageText:@"Error"];
         [alert setInformativeText:@"Unable to get machine ID."];
+        [alert setIcon:icon];
         [alert beginSheetModalForWindow:self.regWindow completionHandler:nil];
         return;
     }
@@ -354,6 +358,7 @@ void create_instances(int total_instances) {
         NSAlert *alert = [[NSAlert alloc] init];
         [alert setMessageText:@"Error"];
         [alert setInformativeText:@"Public key not found."];
+        [alert setIcon:icon];
         [alert beginSheetModalForWindow:self.regWindow completionHandler:nil];
         return;
     }
@@ -369,6 +374,7 @@ void create_instances(int total_instances) {
         NSAlert *alert = [[NSAlert alloc] init];
         [alert setMessageText:@"Invalid License"];
         [alert setInformativeText:@"The license key is invalid or does not match this machine."];
+        [alert setIcon:icon];
         [alert beginSheetModalForWindow:self.regWindow completionHandler:nil];
     }
 }
