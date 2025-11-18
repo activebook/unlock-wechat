@@ -15,6 +15,7 @@
 @property (retain) NSTextField *uniqueIdField;
 @property (retain) NSTextView *licenseField;
 @property (retain) NSButton *registerBtn;
+@property (nonatomic, retain) NSButton *copyIdBtn;
 - (void)applicationDidFinishLaunching:(NSNotification *)notif;
 - (BOOL)checkLicense;
 - (void)showRegisterWindow;
@@ -135,6 +136,12 @@ void create_instances(int total_instances) {
 }
 
 @implementation AppDelegate
+
+- (NSButton *)copyIdBtn __attribute__((objc_method_family(none))) {
+
+    return _copyIdBtn;
+
+}
 
 - (BOOL)applicationShouldTerminateAfterLastWindowClosed:(NSApplication *)sender {
     return YES;
@@ -264,20 +271,21 @@ void create_instances(int total_instances) {
         return;
     }
 
-    self.regWindow = [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, 350, 180) styleMask:NSWindowStyleMaskTitled|NSWindowStyleMaskClosable backing:NSBackingStoreBuffered defer:NO];
+    self.regWindow = [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, 350, 220) styleMask:NSWindowStyleMaskTitled|NSWindowStyleMaskClosable backing:NSBackingStoreBuffered defer:NO];
     [self.regWindow setTitle:@"Register"];
 
     NSView *view = [self.regWindow contentView];
 
-    NSTextField *idLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(10, 125, 50, 25)];
+    NSTextField *idLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(10, 170, 50, 25)];
     [idLabel setEditable:NO];
     [idLabel setBordered:NO];
     [idLabel setDrawsBackground:NO];
     [idLabel setStringValue:@"ID:"];
     [view addSubview:idLabel];
 
-    self.uniqueIdField = [[NSTextField alloc] initWithFrame:NSMakeRect(60, 125, 280, 25)];
+    self.uniqueIdField = [[NSTextField alloc] initWithFrame:NSMakeRect(60, 170, 220, 25)];
     [self.uniqueIdField setEditable:NO];
+    [self.uniqueIdField setSelectable:YES];
     [self.uniqueIdField setBordered:NO];
     [self.uniqueIdField setDrawsBackground:NO];
 
@@ -290,15 +298,21 @@ void create_instances(int total_instances) {
     }
     [view addSubview:self.uniqueIdField];
 
-    NSTextField *keyLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(10, 90, 100, 25)];
+    self.copyIdBtn = [[NSButton alloc] initWithFrame:NSMakeRect(150, 172, 85, 25)];
+    [self.copyIdBtn setTitle:@"Copy"];
+    [self.copyIdBtn setTarget:self];
+    [self.copyIdBtn setAction:@selector(copyIdAction:)];
+    [view addSubview:self.copyIdBtn];
+
+    NSTextField *keyLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(10, 140, 100, 25)];
     [keyLabel setEditable:NO];
     [keyLabel setBordered:NO];
     [keyLabel setDrawsBackground:NO];
     [keyLabel setStringValue:@"License Key:"];
     [view addSubview:keyLabel];
 
-    NSScrollView *scrollView = [[NSScrollView alloc] initWithFrame:NSMakeRect(10, 35, 330, 50)];
-    NSTextView *textView = [[NSTextView alloc] initWithFrame:NSMakeRect(0, 0, 330, 50)];
+    NSScrollView *scrollView = [[NSScrollView alloc] initWithFrame:NSMakeRect(10, 45, 330, 90)];
+    NSTextView *textView = [[NSTextView alloc] initWithFrame:NSMakeRect(0, 0, 330, 90)];
     [scrollView setDocumentView:textView];
     [scrollView setHasVerticalScroller:YES];
     [scrollView setHasHorizontalScroller:NO];
@@ -307,13 +321,13 @@ void create_instances(int total_instances) {
 
     self.licenseField = textView;
 
-    self.registerBtn = [[NSButton alloc] initWithFrame:NSMakeRect(195, 5, 80, 25)];
+    self.registerBtn = [[NSButton alloc] initWithFrame:NSMakeRect(195, 10, 80, 25)];
     [self.registerBtn setTitle:@"Register"];
     [self.registerBtn setTarget:self];
     [self.registerBtn setAction:@selector(registerAction:)];
     [view addSubview:self.registerBtn];
 
-    NSButton *cancelBtn = [[NSButton alloc] initWithFrame:NSMakeRect(95, 5, 80, 25)];
+    NSButton *cancelBtn = [[NSButton alloc] initWithFrame:NSMakeRect(95, 10, 80, 25)];
     [cancelBtn setTitle:@"Cancel"];
     [cancelBtn setTarget:self];
     [cancelBtn setAction:@selector(cancelAction:)];
@@ -324,6 +338,7 @@ void create_instances(int total_instances) {
         self.uniqueIdField = nil;
         self.licenseField = nil;
         self.registerBtn = nil;
+        self.copyIdBtn = nil;
         [self.regWindow orderOut:nil];
     }];
 }
@@ -381,6 +396,13 @@ void create_instances(int total_instances) {
 
 - (void)cancelAction:(NSButton *)sender {
     [self.window endSheet:self.regWindow];
+}
+
+- (void)copyIdAction:(NSButton *)sender {
+    [self.copyIdBtn setTitle:@"Copied✓"];
+    NSPasteboard *pasteboard = [NSPasteboard generalPasteboard];
+    [pasteboard clearContents];
+    [pasteboard writeObjects:@[self.uniqueIdField.stringValue]];
 }
 @end
 
