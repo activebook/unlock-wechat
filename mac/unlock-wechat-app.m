@@ -18,6 +18,8 @@
 @property (nonatomic, retain) NSButton *copyIdBtn;
 - (void)applicationDidFinishLaunching:(NSNotification *)notif;
 - (BOOL)checkLicense;
+- (NSString *)getStoredLicense;
+- (void)saveLicense:(NSString *)license;
 - (void)showRegisterWindow;
 - (void)performCreate:(int)num;
 @end
@@ -198,6 +200,9 @@ void create_instances(int total_instances) {
 
     // Since small, hardcode.
 
+    // Create standard main menu for macOS app
+    [self createMainMenu];
+
     [self.window makeKeyAndOrderFront:nil];
 }
 
@@ -212,9 +217,25 @@ void create_instances(int total_instances) {
     [attributed release];
 }
 
+- (NSString *)getStoredLicense {
+    NSString *bundleId = [[NSBundle mainBundle] bundleIdentifier];
+    NSString *prefsPath = [NSString stringWithFormat:@"%@/Library/Preferences/%@.plist", NSHomeDirectory(), bundleId];
+    NSDictionary *dict = [NSDictionary dictionaryWithContentsOfFile:prefsPath];
+    return [dict objectForKey:@"licenseKey"];
+}
+
+- (void)saveLicense:(NSString *)license {
+    NSString *bundleId = [[NSBundle mainBundle] bundleIdentifier];
+    NSString *prefsPath = [NSString stringWithFormat:@"%@/Library/Preferences/%@.plist", NSHomeDirectory(), bundleId];
+    NSDictionary *existing = [NSDictionary dictionaryWithContentsOfFile:prefsPath];
+    if (!existing) existing = @{};
+    NSMutableDictionary *dict = [existing mutableCopy];
+    [dict setObject:license forKey:@"licenseKey"];
+    [dict writeToFile:prefsPath atomically:YES];
+}
+
 - (BOOL)checkLicense {
-    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
-    NSString *storedLicense = [defaults objectForKey:@"licenseKey"];
+    NSString *storedLicense = [self getStoredLicense];
     if (!storedLicense) return NO;
 
     unsigned char token[4];
@@ -333,6 +354,8 @@ void create_instances(int total_instances) {
     [cancelBtn setAction:@selector(cancelAction:)];
     [view addSubview:cancelBtn];
 
+    [self.regWindow makeFirstResponder:self.licenseField];
+
     [self.window beginSheet:self.regWindow completionHandler:^(NSModalResponse returnCode) {
         self.regWindow = nil;
         self.uniqueIdField = nil;
@@ -379,8 +402,7 @@ void create_instances(int total_instances) {
     }
 
     if (VerifyLicense([license UTF8String], token, publicKeyPath)) {
-        NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
-        [defaults setObject:license forKey:@"licenseKey"];
+        [self saveLicense:license];
         [self.window endSheet:self.regWindow];
         // Proceed with create
         int num = [[self.numField stringValue] intValue];
@@ -403,6 +425,129 @@ void create_instances(int total_instances) {
     NSPasteboard *pasteboard = [NSPasteboard generalPasteboard];
     [pasteboard clearContents];
     [pasteboard writeObjects:@[self.uniqueIdField.stringValue]];
+}
+
+- (void)createMainMenu {
+    // Create Application menu
+    NSString *appName = [[NSProcessInfo processInfo] processName];
+    NSMenu *mainMenu = [[NSMenu alloc] initWithTitle:@"MainMenu"];
+
+    // Application menu
+    NSMenuItem *appMenuItem = [[NSMenuItem alloc] initWithTitle:appName action:nil keyEquivalent:@""];
+    NSMenu *appMenu = [[NSMenu alloc] initWithTitle:appName];
+    [appMenuItem setSubmenu:appMenu];
+
+    // About menu item
+    NSMenuItem *aboutItem = [[NSMenuItem alloc] initWithTitle:[NSString stringWithFormat:@"About %@", appName] action:@selector(orderFrontStandardAboutPanel:) keyEquivalent:@""];
+    [aboutItem setTarget:NSApp];
+    [appMenu addItem:aboutItem];
+
+    // Separator
+    [appMenu addItem:[NSMenuItem separatorItem]];
+
+    // Services menu
+    NSMenuItem *servicesItem = [[NSMenuItem alloc] initWithTitle:@"Services" action:nil keyEquivalent:@""];
+    NSMenu *servicesMenu = [[NSMenu alloc] initWithTitle:@"Services"];
+    [servicesItem setSubmenu:servicesMenu];
+    [NSApp setServicesMenu:servicesMenu];
+    [appMenu addItem:servicesItem];
+
+    // Separator
+    [appMenu addItem:[NSMenuItem separatorItem]];
+
+    // Hide menu item
+    NSMenuItem *hideItem = [[NSMenuItem alloc] initWithTitle:[NSString stringWithFormat:@"Hide %@", appName] action:@selector(hide:) keyEquivalent:@"h"];
+    [hideItem setTarget:NSApp];
+    [appMenu addItem:hideItem];
+
+    // Hide Others menu item
+    NSMenuItem *hideOthersItem = [[NSMenuItem alloc] initWithTitle:@"Hide Others" action:@selector(hideOtherApplications:) keyEquivalent:@"h"];
+    [hideOthersItem setKeyEquivalentModifierMask:(NSEventModifierFlagOption | NSEventModifierFlagCommand)];
+    [hideOthersItem setTarget:NSApp];
+    [appMenu addItem:hideOthersItem];
+
+    // Show All menu item
+    NSMenuItem *showAllItem = [[NSMenuItem alloc] initWithTitle:@"Show All" action:@selector(unhideAllApplications:) keyEquivalent:@""];
+    [showAllItem setTarget:NSApp];
+    [appMenu addItem:showAllItem];
+
+    // Separator
+    [appMenu addItem:[NSMenuItem separatorItem]];
+
+    // Quit menu item
+    NSMenuItem *quitItem = [[NSMenuItem alloc] initWithTitle:[NSString stringWithFormat:@"Quit %@", appName] action:@selector(terminate:) keyEquivalent:@"q"];
+    [quitItem setTarget:NSApp];
+    [appMenu addItem:quitItem];
+
+    [mainMenu addItem:appMenuItem];
+
+    // Edit menu
+    NSMenuItem *editMenuItem = [[NSMenuItem alloc] initWithTitle:@"Edit" action:nil keyEquivalent:@""];
+    NSMenu *editMenu = [[NSMenu alloc] initWithTitle:@"Edit"];
+    [editMenuItem setSubmenu:editMenu];
+
+    // Undo
+    NSMenuItem *undoItem = [[NSMenuItem alloc] initWithTitle:@"Undo" action:@selector(undo:) keyEquivalent:@"z"];
+    [undoItem setTarget:nil]; // nil means first responder
+    [editMenu addItem:undoItem];
+
+    // Redo
+    NSMenuItem *redoItem = [[NSMenuItem alloc] initWithTitle:@"Redo" action:@selector(redo:) keyEquivalent:@"Z"];
+    [redoItem setTarget:nil];
+    [editMenu addItem:redoItem];
+
+    // Separator
+    [editMenu addItem:[NSMenuItem separatorItem]];
+
+    // Cut
+    NSMenuItem *cutItem = [[NSMenuItem alloc] initWithTitle:@"Cut" action:@selector(cut:) keyEquivalent:@"x"];
+    [cutItem setTarget:nil];
+    [editMenu addItem:cutItem];
+
+    // Copy
+    NSMenuItem *copyItem = [[NSMenuItem alloc] initWithTitle:@"Copy" action:@selector(copy:) keyEquivalent:@"c"];
+    [copyItem setTarget:nil];
+    [editMenu addItem:copyItem];
+
+    // Paste
+    NSMenuItem *pasteItem = [[NSMenuItem alloc] initWithTitle:@"Paste" action:@selector(paste:) keyEquivalent:@"v"];
+    [pasteItem setTarget:nil];
+    [editMenu addItem:pasteItem];
+
+    // Select All
+    NSMenuItem *selectAllItem = [[NSMenuItem alloc] initWithTitle:@"Select All" action:@selector(selectAll:) keyEquivalent:@"a"];
+    [selectAllItem setTarget:nil];
+    [editMenu addItem:selectAllItem];
+
+    [mainMenu addItem:editMenuItem];
+
+    // Window menu
+    NSMenuItem *windowMenuItem = [[NSMenuItem alloc] initWithTitle:@"Window" action:nil keyEquivalent:@""];
+    NSMenu *windowMenu = [[NSMenu alloc] initWithTitle:@"Window"];
+    [windowMenuItem setSubmenu:windowMenu];
+
+    // Minimize
+    NSMenuItem *minimizeItem = [[NSMenuItem alloc] initWithTitle:@"Minimize" action:@selector(performMiniaturize:) keyEquivalent:@"m"];
+    [minimizeItem setTarget:nil];
+    [windowMenu addItem:minimizeItem];
+
+    // Zoom
+    NSMenuItem *zoomItem = [[NSMenuItem alloc] initWithTitle:@"Zoom" action:@selector(performZoom:) keyEquivalent:@""];
+    [zoomItem setTarget:nil];
+    [windowMenu addItem:zoomItem];
+
+    // Separator
+    [windowMenu addItem:[NSMenuItem separatorItem]];
+
+    // Bring All to Front
+    NSMenuItem *bringAllToFrontItem = [[NSMenuItem alloc] initWithTitle:@"Bring All to Front" action:@selector(arrangeInFront:) keyEquivalent:@""];
+    [bringAllToFrontItem setTarget:nil];
+    [windowMenu addItem:bringAllToFrontItem];
+
+    [mainMenu addItem:windowMenuItem];
+
+    [NSApp setMainMenu:mainMenu];
+    [NSApp setWindowsMenu:windowMenu];
 }
 @end
 
