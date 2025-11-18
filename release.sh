@@ -7,12 +7,20 @@ set -e
 
 # Check if required files exist
 if [ ! -f "UnlockWeChat.exe" ] || [ ! -f "openmulti.dll" ] || [ ! -f "public.key" ]; then
-    echo "Error: Required files missing: UnlockWeChat.exe, openmulti.dll, or public.key"
+    echo "Error: Required Windows files missing: UnlockWeChat.exe, openmulti.dll, or public.key"
     exit 1
 fi
 
-echo "Creating zip archive..."
-zip UnlockWeChat.zip UnlockWeChat.exe openmulti.dll public.key
+if [ ! -d "mac/UnLockWeChat.app" ]; then
+    echo "Error: Required Mac file missing: mac/UnLockWeChat.app"
+    exit 1
+fi
+
+echo "Creating Windows zip archive..."
+zip UnlockWeChat-windows.zip UnlockWeChat.exe openmulti.dll public.key
+
+echo "Creating Mac zip archive..."
+cd mac && zip -r ../UnlockWeChat-mac.zip UnLockWeChat.app && cd ..
 
 echo "Fetching latest tags from remote..."
 git fetch --tags origin
@@ -31,7 +39,7 @@ else
 
     if [ "$tag_commit" = "$head_commit" ]; then
         echo "no update"
-        rm UnlockWeChat.zip
+        rm UnlockWeChat-windows.zip UnlockWeChat-mac.zip
         exit 0
     fi
 
@@ -48,8 +56,8 @@ echo "Creating tag $new_tag..."
 git tag "$new_tag"
 git push origin "$new_tag"
 
-# Create GitHub release with the zip file
+# Create GitHub release with the zip files
 echo "Creating GitHub release..."
-gh release create "$new_tag" UnlockWeChat.zip --generate-notes -R activebook/unlock-wechat --title "Release $new_tag" --notes "Automated release of UnlockWeChat"
+gh release create "$new_tag" UnlockWeChat-windows.zip UnlockWeChat-mac.zip --generate-notes -R activebook/unlock-wechat --title "Release $new_tag" --notes "Automated release of UnlockWeChat for Windows and Mac"
 
 echo "Release $new_tag successfully created and published!"
