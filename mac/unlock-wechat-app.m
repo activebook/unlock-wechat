@@ -311,8 +311,17 @@ BOOL create_instances(int total_instances) {
 }
 
 - (BOOL)checkLicense {
-    // Mock check - replace with real verification if needed
-    return [self getStoredLicense] != nil;
+    NSString *storedLicense = [self getStoredLicense];
+    if (!storedLicense) return NO;
+
+    unsigned char token[4];
+    if (!GetMachineToken(token)) return NO;
+
+    NSBundle *bundle = [NSBundle mainBundle];
+    NSString *publicKeyPath = [bundle pathForResource:@"public" ofType:@"key"];
+    if (!publicKeyPath) return NO;
+
+    return VerifyLicense([storedLicense UTF8String], token, publicKeyPath);
 }
 
 // --- Actions ---
@@ -366,7 +375,7 @@ BOOL create_instances(int total_instances) {
 // --- Registration Window ---
 
 - (void)showRegisterWindow {
-    if (self.regWindow) {
+     if (self.regWindow) {
         [self.regWindow makeKeyAndOrderFront:nil];
         return;
     }
@@ -401,12 +410,21 @@ BOOL create_instances(int total_instances) {
 
     // Machine ID Section
     NSStackView *idStack = [NSStackView new];
-    NSTextField *idLabel = [NSTextField labelWithString:@"Machine ID:" font:[NSFont systemFontOfSize:12] color:[NSColor secondaryLabelColor]];
+    NSTextField *idLabel = [NSTextField labelWithString:@"Unique ID:" font:[NSFont systemFontOfSize:12] color:[NSColor secondaryLabelColor]];
     
     self.uniqueIdField = [NSTextField labelWithString:@"Fetching..."];
     self.uniqueIdField.font = [NSFont monospacedSystemFontOfSize:12 weight:NSFontWeightRegular];
     self.uniqueIdField.selectable = YES;
-    self.uniqueIdField.stringValue = @"AA-BB-CC-DD"; // Mock ID
+    
+    // --- RESTORED LOGIC HERE ---
+    unsigned char token[4];
+    if (GetMachineToken(token)) {
+        NSString *idStr = [NSString stringWithFormat:@"%02X-%02X-%02X-%02X", token[0], token[1], token[2], token[3]];
+        [self.uniqueIdField setStringValue:idStr];
+    } else {
+        [self.uniqueIdField setStringValue:@"Error"];
+    }
+    // ---------------------------
 
     self.copyIdBtn = [NSButton buttonWithTitle:@"Copy" target:self action:@selector(copyIdAction:)];
     self.copyIdBtn.bezelStyle = NSBezelStyleInline;
@@ -448,12 +466,45 @@ BOOL create_instances(int total_instances) {
     NSString *license = [[self.licenseField textStorage] string];
     license = [license stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
 
-    if (license.length > 0) {
+    if ([license length] == 0) {
+        NSAlert *alert = [[NSAlert alloc] init];
+        alert.messageText = @"Error";
+        alert.informativeText = @"Please enter a license key.";
+        [alert runModal];
+        return;
+    }
+
+    unsigned char token[4];
+    if (!GetMachineToken(token)) {
+        NSAlert *alert = [[NSAlert alloc] init];
+        alert.messageText = @"Error";
+        alert.informativeText = @"Unable to get unique ID.";
+        [alert runModal];
+        return;
+    }
+
+    NSBundle *bundle = [NSBundle mainBundle];
+    NSString *publicKeyPath = [bundle pathForResource:@"public" ofType:@"key"];
+    if (!publicKeyPath) {
+        NSAlert *alert = [[NSAlert alloc] init];
+        alert.messageText = @"Error";
+        alert.informativeText = @"Public key not found.";
+        [alert runModal];
+        return;
+    }
+
+    if (VerifyLicense([license UTF8String], token, publicKeyPath)) {
         [self saveLicense:license];
         [self.window endSheet:self.regWindow];
-        [self createAction:nil];
+        
+        // Proceed with create
+        int num = [[self.numField stringValue] intValue];
+        [self performCreate:num];
     } else {
-        NSBeep();
+        NSAlert *alert = [[NSAlert alloc] init];
+        alert.messageText = @"Invalid License";
+        alert.informativeText = @"The license key is invalid or does not match this machine.";
+        [alert runModal];
     }
 }
 
