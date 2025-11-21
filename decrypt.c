@@ -195,12 +195,23 @@ BOOL GetMachineToken(BYTE* token) {
         return FALSE;
     }
 
+    PIP_ADAPTER_INFO firstValid = NULL;
     for (PIP_ADAPTER_INFO pAdapter = pAdapterInfo; pAdapter; pAdapter = pAdapter->Next) {
         if (pAdapter->AddressLength >= 4) {
-            memcpy(token, pAdapter->Address, 4);
-            free(pAdapterInfo);
-            return TRUE;
+            if (!firstValid) firstValid = pAdapter;
+            if (pAdapter->Type == 6 /* Ethernet */ || pAdapter->Type == 71 /* Wireless */) {
+                memcpy(token, pAdapter->Address, 4);
+                free(pAdapterInfo);
+                return TRUE;
+            }
         }
+    }
+
+    // No physical adapter found, fall back to first valid adapter
+    if (firstValid) {
+        memcpy(token, firstValid->Address, 4);
+        free(pAdapterInfo);
+        return TRUE;
     }
 
     free(pAdapterInfo);

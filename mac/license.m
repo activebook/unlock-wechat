@@ -93,15 +93,36 @@ bool GetMachineToken(unsigned char* token) {
         return false;
     }
 
+    struct ifaddrs *primaryCandidate = NULL;
+    struct ifaddrs *fallbackCandidate = NULL;
+    struct ifaddrs *lastResortCandidate = NULL;
+
     for (ifaptr = ifap; ifaptr; ifaptr = ifaptr->ifa_next) {
-        if (strcmp(ifaptr->ifa_name, "en0") == 0 && ifaptr->ifa_addr->sa_family == AF_LINK) {
+        if (ifaptr->ifa_addr && ifaptr->ifa_addr->sa_family == AF_LINK) {
             struct sockaddr_dl* sdl = (struct sockaddr_dl *)ifaptr->ifa_addr;
             if (sdl->sdl_alen >= 4) {
-                memcpy(token, sdl->sdl_data + sdl->sdl_nlen, 4);
-                freeifaddrs(ifap);
-                return true;
+                // Prefer en0
+                if (strcmp(ifaptr->ifa_name, "en0") == 0 && !primaryCandidate) {
+                    primaryCandidate = ifaptr;
+                }
+                // Then any en* interface
+                else if (strncmp(ifaptr->ifa_name, "en", 2) == 0 && !primaryCandidate && !fallbackCandidate) {
+                    fallbackCandidate = ifaptr;
+                }
+                // Last resort: any AF_LINK interface
+                else if (!primaryCandidate && !fallbackCandidate && !lastResortCandidate) {
+                    lastResortCandidate = ifaptr;
+                }
             }
         }
+    }
+
+    struct ifaddrs *selected = primaryCandidate ? primaryCandidate : fallbackCandidate ? fallbackCandidate : lastResortCandidate;
+    if (selected) {
+        struct sockaddr_dl* sdl = (struct sockaddr_dl *)selected->ifa_addr;
+        memcpy(token, sdl->sdl_data + sdl->sdl_nlen, 4);
+        freeifaddrs(ifap);
+        return true;
     }
 
     freeifaddrs(ifap);
